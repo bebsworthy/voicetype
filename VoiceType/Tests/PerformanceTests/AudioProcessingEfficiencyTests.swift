@@ -1,5 +1,6 @@
 import XCTest
 import os.log
+import Darwin
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
 

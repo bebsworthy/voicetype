@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import Darwin
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
 
@@ -16,15 +17,16 @@ public final class TestUtilities {
         amplitude: Float = 0.5
     ) -> AudioData {
         let sampleCount = Int(duration * sampleRate)
-        var samples: [Float] = []
+        var samples: [Int16] = []
         
         for i in 0..<sampleCount {
             let time = Double(i) / sampleRate
             let value = amplitude * Float(sin(2.0 * .pi * frequency * time))
-            samples.append(value)
+            let int16Value = Int16(value * Float(Int16.max))
+            samples.append(int16Value)
         }
         
-        return AudioData(samples: samples, sampleRate: sampleRate)
+        return AudioData(samples: samples, sampleRate: sampleRate, channelCount: 1)
     }
     
     /// Load test audio file from bundle
@@ -47,11 +49,13 @@ public final class TestUtilities {
         var noisySamples = cleanAudio.samples
         
         for i in 0..<noisySamples.count {
+            let currentValue = Float(noisySamples[i]) / Float(Int16.max)
             let noise = Float.random(in: -noiseLevel...noiseLevel)
-            noisySamples[i] = min(max(noisySamples[i] + noise, -1.0), 1.0)
+            let newValue = min(max(currentValue + noise, -1.0), 1.0)
+            noisySamples[i] = Int16(newValue * Float(Int16.max))
         }
         
-        return AudioData(samples: noisySamples, sampleRate: cleanAudio.sampleRate)
+        return AudioData(samples: noisySamples, sampleRate: cleanAudio.sampleRate, channelCount: cleanAudio.channelCount)
     }
     
     // MARK: - Performance Measurement

@@ -76,7 +76,7 @@ let package = Package(
         // Test targets
         .testTarget(
             name: "VoiceTypeCoreTests",
-            dependencies: ["VoiceTypeCore"],
+            dependencies: ["VoiceTypeCore", "VoiceTypeImplementations"],
             path: "Tests/CoreTests",
             resources: [
                 .process("Resources")

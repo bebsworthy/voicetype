@@ -26,22 +26,20 @@ final class PermissionManagerTests: XCTestCase {
     
     // MARK: - Permission State Tests
     
-    func testPermissionStateDescription() {
-        XCTAssertEqual(PermissionState.notRequested.description, "Not Requested")
-        XCTAssertEqual(PermissionState.denied.description, "Denied")
-        XCTAssertEqual(PermissionState.granted.description, "Granted")
-    }
-    
-    func testPermissionStateIcons() {
-        XCTAssertEqual(PermissionState.notRequested.iconName, "questionmark.circle")
-        XCTAssertEqual(PermissionState.denied.iconName, "xmark.circle")
-        XCTAssertEqual(PermissionState.granted.iconName, "checkmark.circle")
-    }
-    
-    func testPermissionStateColors() {
-        XCTAssertEqual(PermissionState.notRequested.color, "gray")
-        XCTAssertEqual(PermissionState.denied.color, "red")
-        XCTAssertEqual(PermissionState.granted.color, "green")
+    func testPermissionStateValues() {
+        // Test the raw values
+        XCTAssertEqual(PermissionState.notRequested.rawValue, "notRequested")
+        XCTAssertEqual(PermissionState.denied.rawValue, "denied")
+        XCTAssertEqual(PermissionState.granted.rawValue, "granted")
+        XCTAssertEqual(PermissionState.undetermined.rawValue, "undetermined")
+        
+        // Test boolean properties
+        XCTAssertTrue(PermissionState.granted.isGranted)
+        XCTAssertFalse(PermissionState.denied.isGranted)
+        
+        XCTAssertTrue(PermissionState.notRequested.needsRequest)
+        XCTAssertTrue(PermissionState.undetermined.needsRequest)
+        XCTAssertFalse(PermissionState.granted.needsRequest)
     }
     
     // MARK: - Permission Type Tests
@@ -149,61 +147,77 @@ final class PermissionManagerTests: XCTestCase {
 // MARK: - Mock Permission Manager for Testing
 
 /// Mock implementation of PermissionManager for testing purposes
-/// This allows testing components that depend on PermissionManager
-/// without actually requesting system permissions
-class MockPermissionManager: PermissionManager {
+/// Since we can't override @Published properties, we'll create a separate mock
+class MockPermissionManager: ObservableObject {
     
-    private var mockMicrophoneState: PermissionState = .notRequested
-    private var mockAccessibilityState: PermissionState = .notRequested
+    @Published var microphonePermission: PermissionState = .notRequested
+    @Published var accessibilityPermission: PermissionState = .notRequested
+    @Published var allPermissionsGranted: Bool = false
     
     // Allow tests to set mock states
     func setMockMicrophonePermission(_ state: PermissionState) {
-        mockMicrophoneState = state
         microphonePermission = state
         updateAllPermissionsStatus()
     }
     
     func setMockAccessibilityPermission(_ state: PermissionState) {
-        mockAccessibilityState = state
         accessibilityPermission = state
         updateAllPermissionsStatus()
     }
     
-    override func checkMicrophonePermission() {
-        microphonePermission = mockMicrophoneState
+    func checkMicrophonePermission() {
+        // Just trigger update
         updateAllPermissionsStatus()
     }
     
-    override func hasAccessibilityPermission() -> Bool {
-        accessibilityPermission = mockAccessibilityState
+    func hasAccessibilityPermission() -> Bool {
+        return accessibilityPermission == .granted
+    }
+    
+    func requestMicrophonePermission() async -> Bool {
         updateAllPermissionsStatus()
-        return mockAccessibilityState == .granted
+        return microphonePermission == .granted
     }
     
-    override func requestMicrophonePermission() async -> Bool {
-        microphonePermission = mockMicrophoneState
+    func openAccessibilityPreferences() {
+        // No-op in tests
+    }
+    
+    func openMicrophonePreferences() {
+        // No-op in tests
+    }
+    
+    func showAccessibilityPermissionGuide() {
+        // No-op in tests
+    }
+    
+    func showPermissionDeniedAlert(for permission: PermissionType) {
+        // No-op in tests
+    }
+    
+    func generatePermissionInstructions(for permission: PermissionType) -> String {
+        switch permission {
+        case .microphone:
+            return "Mock microphone instructions"
+        case .accessibility:
+            return "Mock accessibility instructions"
+        }
+    }
+    
+    func refreshPermissionStates() {
         updateAllPermissionsStatus()
-        return mockMicrophoneState == .granted
     }
     
-    override func openAccessibilityPreferences() {
-        // No-op in tests
-    }
-    
-    override func openMicrophonePreferences() {
-        // No-op in tests
-    }
-    
-    override func showAccessibilityPermissionGuide() {
-        // No-op in tests
-    }
-    
-    override func showPermissionDeniedAlert(for permission: PermissionType) {
-        // No-op in tests
+    var permissionSummary: PermissionSummary {
+        PermissionSummary(
+            microphone: microphonePermission,
+            accessibility: accessibilityPermission,
+            allGranted: allPermissionsGranted
+        )
     }
     
     private func updateAllPermissionsStatus() {
-        allPermissionsGranted = mockMicrophoneState == .granted && mockAccessibilityState == .granted
+        allPermissionsGranted = microphonePermission == .granted && accessibilityPermission == .granted
     }
 }
 
@@ -277,5 +291,50 @@ final class MockPermissionManagerTests: XCTestCase {
         
         XCTAssertTrue(granted)
         XCTAssertEqual(mockManager.microphonePermission, .granted)
+    }
+    
+    func testMockPermissionSummary() {
+        // Initially both permissions are not requested
+        var summary = mockManager.permissionSummary
+        XCTAssertEqual(summary.microphone, .notRequested)
+        XCTAssertEqual(summary.accessibility, .notRequested)
+        XCTAssertFalse(summary.allGranted)
+        XCTAssertEqual(summary.permissionsNeedingAttention.count, 2)
+        
+        // Grant microphone permission
+        mockManager.setMockMicrophonePermission(.granted)
+        summary = mockManager.permissionSummary
+        XCTAssertTrue(summary.canFunctionMinimally)
+        XCTAssertFalse(summary.canFunctionFully)
+        XCTAssertEqual(summary.permissionsNeedingAttention.count, 1)
+        XCTAssertTrue(summary.permissionsNeedingAttention.contains(.accessibility))
+        
+        // Grant accessibility permission
+        mockManager.setMockAccessibilityPermission(.granted)
+        summary = mockManager.permissionSummary
+        XCTAssertTrue(summary.canFunctionMinimally)
+        XCTAssertTrue(summary.canFunctionFully)
+        XCTAssertTrue(summary.permissionsNeedingAttention.isEmpty)
+    }
+    
+    func testMockPermissionInstructions() {
+        let micInstructions = mockManager.generatePermissionInstructions(for: .microphone)
+        XCTAssertTrue(micInstructions.contains("microphone"))
+        
+        let accInstructions = mockManager.generatePermissionInstructions(for: .accessibility)
+        XCTAssertTrue(accInstructions.contains("accessibility"))
+    }
+    
+    func testMockRefreshPermissionStates() {
+        // Set initial states
+        mockManager.setMockMicrophonePermission(.granted)
+        mockManager.setMockAccessibilityPermission(.denied)
+        
+        // Refresh should maintain states
+        mockManager.refreshPermissionStates()
+        
+        XCTAssertEqual(mockManager.microphonePermission, .granted)
+        XCTAssertEqual(mockManager.accessibilityPermission, .denied)
+        XCTAssertFalse(mockManager.allPermissionsGranted)
     }
 }

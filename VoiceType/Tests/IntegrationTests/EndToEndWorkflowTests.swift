@@ -294,16 +294,17 @@ class MockPermissionManager: PermissionManager {
     }
 }
 
-class MockHotkeyManager: HotkeyManager {
+// Simple mock that doesn't inherit from HotkeyManager to avoid property override issues
+class MockHotkeyManager {
     var registeredHotkeys: [(identifier: String, keyCombo: String, handler: () -> Void)] = []
     var onRegisterHandler: ((String, String, @escaping () -> Void) -> Void)?
     
-    override func registerHotkey(identifier: String, keyCombo: String, handler: @escaping () -> Void) throws {
-        registeredHotkeys.append((identifier, keyCombo, handler))
-        onRegisterHandler?(identifier, keyCombo, handler)
+    func registerHotkey(identifier: String, keyCombo: String, action: @escaping () -> Void) throws {
+        registeredHotkeys.append((identifier, keyCombo, action))
+        onRegisterHandler?(identifier, keyCombo, action)
     }
     
-    override func unregisterHotkey(identifier: String) {
+    func unregisterHotkey(identifier: String) {
         registeredHotkeys.removeAll { $0.identifier == identifier }
     }
     
@@ -314,26 +315,25 @@ class MockHotkeyManager: HotkeyManager {
     }
 }
 
-class MockModelManager: ModelManager {
+// Simple mock that doesn't inherit from ModelManager to avoid async init issues
+class MockModelManager {
     var mockInstalledModels: [ModelInfo] = [
         ModelInfo(
-            id: UUID(),
-            name: "whisper-tiny",
-            type: .tiny,
-            size: 39_000_000,
-            downloadURL: URL(string: "https://example.com/tiny")!,
-            isEmbedded: true,
-            isInstalled: true,
-            localPath: nil
+            type: .fast,
+            version: "1.0",
+            path: URL(fileURLWithPath: "/tmp/whisper-tiny.mlmodelc"),
+            sizeInBytes: 39_000_000,
+            isLoaded: true,
+            lastUsed: Date()
         )
     ]
     var shouldFailDownload = false
     
-    override var installedModels: [ModelInfo] {
+    var installedModels: [ModelInfo] {
         return mockInstalledModels
     }
     
-    override func downloadModel(_ model: ModelInfo) async throws {
+    func downloadModel(_ model: ModelInfo) async throws {
         if shouldFailDownload {
             throw VoiceTypeError.networkUnavailable
         }

@@ -185,9 +185,11 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         // Given: Multiple models loaded (simulated)
         mockTranscriber.loadedModels = [.tiny, .base]
         
-        // When: Receive memory warning
+        // When: Simulate memory pressure
+        // Note: macOS doesn't have a direct equivalent to UIApplication.didReceiveMemoryWarningNotification
+        // We'll post a custom notification for testing
         NotificationCenter.default.post(
-            name: UIApplication.didReceiveMemoryWarningNotification,
+            name: Notification.Name("TestMemoryWarning"),
             object: nil
         )
         

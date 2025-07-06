@@ -2,6 +2,7 @@ import XCTest
 import Combine
 @testable import VoiceTypeImplementations
 
+@MainActor
 class HotkeyManagerTests: XCTestCase {
     
     var hotkeyManager: HotkeyManager!
@@ -14,16 +15,18 @@ class HotkeyManagerTests: XCTestCase {
     }
     
     override func tearDown() {
-        hotkeyManager.unregisterAllHotkeys()
-        hotkeyManager = nil
-        cancellables = nil
+        Task { @MainActor in
+            hotkeyManager.unregisterAllHotkeys()
+            hotkeyManager = nil
+            cancellables = nil
+        }
         super.tearDown()
     }
     
     // MARK: - Key Combination Validation Tests
     
     func testValidKeyComboValidation() {
-        // Test valid combinations
+        // Test valid combinations by trying to register them
         let validCombos = [
             "cmd+shift+a",
             "ctrl+opt+space",
@@ -32,15 +35,22 @@ class HotkeyManagerTests: XCTestCase {
             "cmd+shift+opt+p"
         ]
         
-        for combo in validCombos {
-            let result = hotkeyManager.validateKeyCombo(combo)
-            XCTAssertTrue(result.isValid, "'\(combo)' should be valid")
-            XCTAssertNil(result.error)
+        for (index, combo) in validCombos.enumerated() {
+            do {
+                try hotkeyManager.registerHotkey(
+                    identifier: "test.\(index)",
+                    keyCombo: combo,
+                    action: {}
+                )
+                // If registration succeeds, the combo is valid
+            } catch {
+                XCTFail("'\(combo)' should be valid but got error: \(error)")
+            }
         }
     }
     
     func testInvalidKeyComboValidation() {
-        // Test invalid combinations
+        // Test invalid combinations by trying to register them
         let invalidCombos = [
             "a",              // No modifier
             "space",          // No modifier
@@ -52,9 +62,16 @@ class HotkeyManagerTests: XCTestCase {
         ]
         
         for combo in invalidCombos {
-            let result = hotkeyManager.validateKeyCombo(combo)
-            XCTAssertFalse(result.isValid, "'\(combo)' should be invalid")
-            XCTAssertNotNil(result.error)
+            do {
+                try hotkeyManager.registerHotkey(
+                    identifier: "test.invalid",
+                    keyCombo: combo,
+                    action: {}
+                )
+                XCTFail("'\(combo)' should be invalid but was accepted")
+            } catch {
+                // Expected error for invalid combo
+            }
         }
     }
     

@@ -9,27 +9,29 @@ final class TranscriberTests: XCTestCase {
     func testMockTranscriberSuccess() async throws {
         // Given
         let transcriber = MockTranscriber(behavior: .success(text: "Test transcription", confidence: 0.95))
-        let audioData = Data(repeating: 0, count: 16000) // 1 second of audio
+        let samples = Array(repeating: Int16(0), count: 16000) // 1 second of audio
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When
-        let result = try await transcriber.transcribe(audioData)
+        let result = try await transcriber.transcribe(audioData, language: nil)
         
         // Then
         XCTAssertEqual(result.text, "Test transcription")
         XCTAssertEqual(result.confidence, 0.95)
         XCTAssertEqual(result.language, .english)
         XCTAssertEqual(transcriber.transcribeCallCount, 1)
-        XCTAssertEqual(transcriber.lastAudioDataSize, 16000)
+        XCTAssertEqual(transcriber.lastAudioDataSize, 16000 * MemoryLayout<Int16>.size)
     }
     
     func testMockTranscriberFailure() async {
         // Given
         let transcriber = MockTranscriber(behavior: .failure(.modelNotLoaded))
-        let audioData = Data(repeating: 0, count: 16000)
+        let samples = Array(repeating: Int16(0), count: 16000)
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When/Then
         do {
-            _ = try await transcriber.transcribe(audioData)
+            _ = try await transcriber.transcribe(audioData, language: nil)
             XCTFail("Expected error to be thrown")
         } catch {
             XCTAssertTrue(error is TranscriberError)
@@ -48,11 +50,12 @@ final class TranscriberTests: XCTestCase {
     func testMockTranscriberDelayed() async throws {
         // Given
         let transcriber = MockTranscriber(behavior: .delayed(text: "Delayed result", delay: 0.1))
-        let audioData = Data(repeating: 0, count: 16000)
+        let samples = Array(repeating: Int16(0), count: 16000)
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When
         let startTime = Date()
-        let result = try await transcriber.transcribe(audioData)
+        let result = try await transcriber.transcribe(audioData, language: nil)
         let elapsed = Date().timeIntervalSince(startTime)
         
         // Then
@@ -69,29 +72,30 @@ final class TranscriberTests: XCTestCase {
             .failure(.transcriptionFailed(reason: "Test failure"))
         ]
         let transcriber = MockTranscriber(behavior: .sequence(behaviors))
-        let audioData = Data(repeating: 0, count: 16000)
+        let samples = Array(repeating: Int16(0), count: 16000)
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When/Then
         // First call
-        let result1 = try await transcriber.transcribe(audioData)
+        let result1 = try await transcriber.transcribe(audioData, language: nil)
         XCTAssertEqual(result1.text, "First")
         XCTAssertEqual(result1.confidence, 0.9)
         
         // Second call
-        let result2 = try await transcriber.transcribe(audioData)
+        let result2 = try await transcriber.transcribe(audioData, language: nil)
         XCTAssertEqual(result2.text, "Second")
         XCTAssertEqual(result2.confidence, 0.8)
         
         // Third call should fail
         do {
-            _ = try await transcriber.transcribe(audioData)
+            _ = try await transcriber.transcribe(audioData, language: nil)
             XCTFail("Expected error on third call")
         } catch {
             XCTAssertTrue(error is TranscriberError)
         }
         
         // Fourth call should cycle back to first
-        let result4 = try await transcriber.transcribe(audioData)
+        let result4 = try await transcriber.transcribe(audioData, language: nil)
         XCTAssertEqual(result4.text, "First")
     }
     
@@ -99,11 +103,12 @@ final class TranscriberTests: XCTestCase {
         // Given
         let transcriber = MockTranscriber()
         transcriber.setReady(false)
-        let audioData = Data(repeating: 0, count: 16000)
+        let samples = Array(repeating: Int16(0), count: 16000)
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When/Then
         do {
-            _ = try await transcriber.transcribe(audioData)
+            _ = try await transcriber.transcribe(audioData, language: nil)
             XCTFail("Expected error when not ready")
         } catch TranscriberError.modelNotLoaded {
             // Expected
@@ -115,11 +120,11 @@ final class TranscriberTests: XCTestCase {
     func testMockTranscriberEmptyAudioData() async {
         // Given
         let transcriber = MockTranscriber()
-        let emptyData = Data()
+        let emptyAudioData = AudioData.empty
         
         // When/Then
         do {
-            _ = try await transcriber.transcribe(emptyData)
+            _ = try await transcriber.transcribe(emptyAudioData, language: nil)
             XCTFail("Expected error for empty audio data")
         } catch TranscriberError.invalidAudioData {
             // Expected
@@ -141,12 +146,12 @@ final class TranscriberTests: XCTestCase {
         XCTAssertEqual(transcriber.selectedLanguage, .spanish)
         
         // Verify all languages are supported
-        XCTAssertEqual(transcriber.supportedLanguages.count, TranscriptionLanguage.allCases.count)
+        XCTAssertEqual(transcriber.supportedLanguages.count, Language.allCases.count)
     }
     
     func testLanguageDisplayNames() {
         // Verify all languages have proper display names
-        for language in TranscriptionLanguage.allCases {
+        for language in Language.allCases {
             XCTAssertFalse(language.displayName.isEmpty)
             XCTAssertNotEqual(language.displayName, language.rawValue)
         }
@@ -162,9 +167,8 @@ final class TranscriberTests: XCTestCase {
         let whisper = CoreMLWhisper(modelType: .tiny, modelPath: modelPath)
         
         // Then
-        XCTAssertFalse(whisper.isReady) // Should not be ready until model is loaded
-        XCTAssertEqual(whisper.selectedLanguage, .english)
-        XCTAssertEqual(whisper.supportedLanguages.count, TranscriptionLanguage.allCases.count)
+        XCTAssertFalse(whisper.isModelLoaded) // Should not be ready until model is loaded
+        XCTAssertEqual(whisper.supportedLanguages.count, Language.allCases.count)
     }
     
     func testCoreMLWhisperModelLoadingFailure() async {
@@ -186,11 +190,12 @@ final class TranscriberTests: XCTestCase {
     func testCoreMLWhisperTranscribeWithoutModel() async {
         // Given
         let whisper = CoreMLWhisper(modelType: .small, modelPath: "/tmp/model.mlmodelc")
-        let audioData = Data(repeating: 0, count: 16000)
+        let samples = Array(repeating: Int16(0), count: 16000)
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         // When/Then
         do {
-            _ = try await whisper.transcribe(audioData)
+            _ = try await whisper.transcribe(audioData, language: nil)
             XCTFail("Expected error when model not loaded")
         } catch TranscriberError.modelNotLoaded {
             // Expected
@@ -315,14 +320,15 @@ extension TranscriberTests {
     
     func testMockTranscriberPerformance() {
         let transcriber = MockTranscriber(behavior: .success(text: "Performance test", confidence: 0.95))
-        let audioData = Data(repeating: 0, count: 16000 * 30) // 30 seconds
+        let samples = Array(repeating: Int16(0), count: 16000 * 30) // 30 seconds
+        let audioData = AudioData(samples: samples, sampleRate: 16000, channelCount: 1)
         
         measure {
             let expectation = XCTestExpectation(description: "Transcription")
             
             Task {
                 do {
-                    _ = try await transcriber.transcribe(audioData)
+                    _ = try await transcriber.transcribe(audioData, language: nil)
                     expectation.fulfill()
                 } catch {
                     XCTFail("Transcription failed: \(error)")
