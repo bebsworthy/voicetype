@@ -1,0 +1,184 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+  workflow_dispatch:
+
+env:
+  SWIFT_VERSION: '5.9'
+  XCODE_VERSION: '15.0'
+
+jobs:
+  lint:
+    name: SwiftLint
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Install SwiftLint
+        run: brew install swiftlint
+        
+      - name: Run SwiftLint
+        run: swiftlint lint --reporter github-actions-logging
+
+  test:
+    name: Test
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        configuration: [debug, release]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+        
+      - name: Show Swift version
+        run: swift --version
+        
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Build
+        run: swift build -c ${{ matrix.configuration }}
+        
+      - name: Run tests
+        run: |
+          swift test -c ${{ matrix.configuration }} \
+            --enable-code-coverage \
+            --parallel
+            
+      - name: Generate coverage report
+        if: matrix.configuration == 'debug'
+        run: |
+          xcrun llvm-cov export \
+            .build/debug/*PackageTests.xctest/Contents/MacOS/*PackageTests \
+            -instr-profile=.build/debug/codecov/default.profdata \
+            -format=lcov \
+            -ignore-filename-regex=".build|Tests" \
+            > coverage.lcov
+            
+      - name: Upload coverage
+        if: matrix.configuration == 'debug'
+        uses: codecov/codecov-action@v3
+        with:
+          file: coverage.lcov
+          flags: unittests
+          name: codecov-umbrella
+
+  build:
+    name: Build
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        arch: [arm64, x86_64, universal]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+        
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Build for ${{ matrix.arch }}
+        run: ./Scripts/build.sh release ${{ matrix.arch }}
+        
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: VoiceType-${{ matrix.arch }}
+          path: build/VoiceType.app
+
+  performance:
+    name: Performance Tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+        
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Build optimized
+        run: swift build -c release
+        
+      - name: Run performance tests
+        run: ./Scripts/test.sh performance
+        
+      - name: Upload performance results
+        uses: actions/upload-artifact@v3
+        with:
+          name: performance-results
+          path: |
+            performance-*.json
+            performance-*.log
+
+  integration:
+    name: Integration Tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+        
+      - name: Build
+        run: ./Scripts/build.sh debug
+        
+      - name: Grant permissions for testing
+        run: |
+          # Grant microphone access for tests
+          sudo sqlite3 ~/Library/Application\ Support/com.apple.TCC/TCC.db \
+            "INSERT OR REPLACE INTO access VALUES('kTCCServiceMicrophone','com.voicetype.app',0,2,0,1,NULL,NULL,NULL,'UNUSED',NULL,0,1541440109);"
+            
+      - name: Run integration tests
+        run: ./Scripts/test.sh integration
+
+  security:
+    name: Security Scan
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Run security scan
+        run: |
+          # Check for hardcoded secrets
+          if grep -r "PRIVATE KEY\|SECRET\|PASSWORD\|API_KEY" --include="*.swift" .; then
+            echo "Found potential hardcoded secrets"
+            exit 1
+          fi
+          
+          # Check dependencies for vulnerabilities
+          swift package audit
+          
+      - name: SAST Scan
+        uses: AppThreat/sast-scan-action@v1.0.0
+        with:
+          type: "swift"
