@@ -1,7 +1,6 @@
 import XCTest
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
-@testable import VoiceType
 
 /// Main integration test suite that runs all integration tests
 final class IntegrationTestSuite: XCTestCase {

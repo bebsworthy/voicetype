@@ -76,3 +76,33 @@ public struct AudioProcessorConfiguration {
         self.maxRecordingDuration = maxRecordingDuration
     }
 }
+
+/// Errors that can occur during audio processing
+public enum AudioProcessorError: LocalizedError {
+    case permissionDenied
+    case deviceNotAvailable
+    case recordingInProgress
+    case noActiveRecording
+    case audioSessionError(String)
+    case deviceDisconnected
+    case systemError(String)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .permissionDenied:
+            return "Microphone permission denied. Please grant permission in System Preferences."
+        case .deviceNotAvailable:
+            return "No audio input device available."
+        case .recordingInProgress:
+            return "Recording is already in progress."
+        case .noActiveRecording:
+            return "No active recording to stop."
+        case .audioSessionError(let message):
+            return "Audio session error: \(message)"
+        case .deviceDisconnected:
+            return "Audio device was disconnected during recording."
+        case .systemError(let message):
+            return "System error: \(message)"
+        }
+    }
+}

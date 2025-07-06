@@ -8,6 +8,8 @@
 import Foundation
 import SwiftUI
 import os.log
+import VoiceTypeCore
+import VoiceTypeImplementations
 
 /// Manages the application lifecycle, initialization, and setup
 @MainActor
@@ -36,7 +38,6 @@ public class AppLifecycleManager: ObservableObject {
     
     private let logger = Logger(subsystem: "com.voicetype.app", category: "AppLifecycle")
     private let fileManager = FileManager.default
-    private let settingsManager: SettingsManager
     private let modelManager: ModelManager
     
     // Settings version tracking
@@ -67,8 +68,7 @@ public class AppLifecycleManager: ObservableObject {
     
     // MARK: - Initialization
     
-    public init(settingsManager: SettingsManager? = nil, modelManager: ModelManager? = nil) {
-        self.settingsManager = settingsManager ?? SettingsManager()
+    public init(modelManager: ModelManager? = nil) {
         self.modelManager = modelManager ?? ModelManager()
         
         // Check first launch status
@@ -322,7 +322,8 @@ public class AppLifecycleManager: ObservableObject {
         }
         
         // Get installed models
-        let installedModels = try await modelManager.getInstalledModels()
+        await modelManager.refreshInstalledModels()
+        let installedModels = modelManager.installedModels
         logger.info("Found \(installedModels.count) installed models")
         
         // Check if we have at least one working model
@@ -332,7 +333,7 @@ public class AppLifecycleManager: ObservableObject {
         if selectedModel == "fast" && embeddedModelURL != nil {
             hasWorkingModel = true
         } else {
-            hasWorkingModel = installedModels.contains { $0.name.lowercased().contains(selectedModel) }
+            hasWorkingModel = installedModels.contains { $0.type.rawValue.lowercased().contains(selectedModel) }
         }
         
         if !hasWorkingModel {
@@ -341,7 +342,7 @@ public class AppLifecycleManager: ObservableObject {
                 UserDefaults.standard.set("fast", forKey: "selectedModel")
                 logger.info("Falling back to embedded fast model")
             } else if !installedModels.isEmpty {
-                let firstModel = installedModels[0].name.lowercased()
+                let firstModel = installedModels[0].type.rawValue.lowercased()
                 UserDefaults.standard.set(firstModel, forKey: "selectedModel")
                 logger.info("Falling back to first available model: \(firstModel)")
             } else {

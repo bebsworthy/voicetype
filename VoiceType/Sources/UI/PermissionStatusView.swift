@@ -1,4 +1,34 @@
 import SwiftUI
+import VoiceTypeCore
+import VoiceTypeImplementations
+
+// MARK: - PermissionState Extensions
+
+extension PermissionState {
+    /// Icon name for the permission state
+    var iconName: String {
+        switch self {
+        case .notRequested, .undetermined:
+            return "questionmark.circle"
+        case .denied:
+            return "xmark.circle"
+        case .granted:
+            return "checkmark.circle"
+        }
+    }
+    
+    /// User-friendly description of the permission state
+    var description: String {
+        switch self {
+        case .notRequested, .undetermined:
+            return "Not Requested"
+        case .denied:
+            return "Denied"
+        case .granted:
+            return "Granted"
+        }
+    }
+}
 
 /// A SwiftUI view that displays the current permission status and provides actions to request permissions
 ///
@@ -15,10 +45,14 @@ import SwiftUI
 ///     }
 /// }
 /// ```
-struct PermissionStatusView: View {
+public struct PermissionStatusView: View {
     @ObservedObject var permissionManager: PermissionManager
     
-    var body: some View {
+    public init(permissionManager: PermissionManager) {
+        self.permissionManager = permissionManager
+    }
+    
+    public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Permissions")
                 .font(.headline)
@@ -129,7 +163,7 @@ struct PermissionRowView: View {
                     .foregroundColor(.secondary)
                 
                 switch permissionState {
-                case .notRequested:
+                case .notRequested, .undetermined:
                     Button("Request") {
                         onRequestPermission()
                     }
@@ -154,7 +188,7 @@ struct PermissionRowView: View {
     
     private func color(for state: PermissionState) -> Color {
         switch state {
-        case .notRequested:
+        case .notRequested, .undetermined:
             return .gray
         case .denied:
             return .red
@@ -388,7 +422,7 @@ struct MicrophoneStepView: View {
     
     private func color(for state: PermissionState) -> Color {
         switch state {
-        case .notRequested:
+        case .notRequested, .undetermined:
             return .gray
         case .denied:
             return .red

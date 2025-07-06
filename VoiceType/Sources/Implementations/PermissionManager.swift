@@ -1,6 +1,7 @@
 import Foundation
 import AVFoundation
 import AppKit
+import VoiceTypeCore
 
 /// Manages application permissions for microphone and accessibility access
 /// 
@@ -279,56 +280,12 @@ public class PermissionManager: ObservableObject {
         _ = hasAccessibilityPermission()
     }
     
-    @MainActor
     private func updateAllPermissionsStatus() {
         allPermissionsGranted = microphonePermission == .granted && accessibilityPermission == .granted
     }
 }
 
 // MARK: - Supporting Types
-
-/// Represents the state of a permission
-public enum PermissionState: String, Codable {
-    case notRequested = "notRequested"
-    case denied = "denied"
-    case granted = "granted"
-    
-    /// User-friendly description of the permission state
-    public var description: String {
-        switch self {
-        case .notRequested:
-            return "Not Requested"
-        case .denied:
-            return "Denied"
-        case .granted:
-            return "Granted"
-        }
-    }
-    
-    /// Icon name for the permission state
-    public var iconName: String {
-        switch self {
-        case .notRequested:
-            return "questionmark.circle"
-        case .denied:
-            return "xmark.circle"
-        case .granted:
-            return "checkmark.circle"
-        }
-    }
-    
-    /// Color for the permission state
-    public var color: String {
-        switch self {
-        case .notRequested:
-            return "gray"
-        case .denied:
-            return "red"
-        case .granted:
-            return "green"
-        }
-    }
-}
 
 /// Types of permissions managed by the app
 public enum PermissionType {

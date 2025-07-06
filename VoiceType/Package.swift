@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "VoiceType",
     platforms: [
-        .macOS(.v12)
+        .macOS(.v13)
     ],
     products: [
         .executable(
@@ -56,7 +56,7 @@ let package = Package(
         // UI components
         .target(
             name: "VoiceTypeUI",
-            dependencies: ["VoiceTypeCore"],
+            dependencies: ["VoiceTypeCore", "VoiceTypeImplementations"],
             path: "Sources/UI",
             swiftSettings: [
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release))

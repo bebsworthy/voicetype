@@ -58,10 +58,10 @@ struct ModelManagementExampleView: View {
                     Text("Installed Models")
                         .font(.headline)
                     
-                    ForEach(modelManager.installedModels, id: \.name) { model in
+                    ForEach(modelManager.installedModels, id: \.path) { model in
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(model.name)
+                                Text(model.type.rawValue.capitalized)
                                     .font(.body)
                                 Text("Version: \(model.version)")
                                     .font(.caption)
@@ -70,7 +70,7 @@ struct ModelManagementExampleView: View {
                             
                             Spacer()
                             
-                            Text(formatBytes(model.size))
+                            Text(formatBytes(model.sizeInBytes))
                                 .font(.caption)
                                 .foregroundColor(.secondary)
                             
@@ -78,7 +78,7 @@ struct ModelManagementExampleView: View {
                                 Task {
                                     do {
                                         try await modelManager.deleteModel(
-                                            name: model.name,
+                                            name: model.type.rawValue,
                                             version: model.version
                                         )
                                     } catch {
@@ -172,11 +172,12 @@ struct ModelManagementExampleView: View {
 // MARK: - Example Usage Functions
 
 /// Example: Download a model with progress tracking
+@MainActor
 func exampleDownloadModel() async throws {
     let downloader = ModelDownloader()
     
     // Subscribe to progress updates
-    let cancellable = downloader.$downloadProgress
+    let _ = await downloader.$downloadProgress
         .sink { progress in
             print("Download progress: \(Int(progress * 100))%")
         }
@@ -197,6 +198,7 @@ func exampleDownloadModel() async throws {
 }
 
 /// Example: List and manage installed models
+@MainActor
 func exampleManageModels() async throws {
     let manager = ModelManager()
     
@@ -204,9 +206,9 @@ func exampleManageModels() async throws {
     await manager.refreshInstalledModels()
     
     // List models
-    for model in manager.installedModels {
-        print("Model: \(model.name) v\(model.version)")
-        print("  Size: \(ByteCountFormatter.string(fromByteCount: model.size, countStyle: .binary))")
+    for model in await manager.installedModels {
+        print("Model: \(model.type.rawValue) v\(model.version)")
+        print("  Size: \(ByteCountFormatter.string(fromByteCount: model.sizeInBytes, countStyle: .binary))")
         print("  Path: \(model.path)")
     }
     
@@ -223,32 +225,36 @@ func exampleBackgroundDownload() {
     let backgroundHandler = BackgroundDownloadHandler.shared
     
     // Subscribe to download events
-    let cancellable = backgroundHandler.downloadEvents
-        .sink { event in
-            switch event {
-            case .started(let name, let version):
-                print("Started downloading \(name) v\(version)")
-            case .progress(let name, let version, let progress):
-                print("\(name) v\(version): \(Int(progress * 100))%")
-            case .completed(let name, let version, let url):
-                print("Completed \(name) v\(version) at \(url)")
-            case .failed(let name, let version, let error):
-                print("Failed \(name) v\(version): \(error)")
-            case .paused(let name, let version, let resumeData):
-                print("Paused \(name) v\(version), can resume: \(resumeData != nil)")
-            }
+    let completedCancellable = backgroundHandler.downloadCompleted
+        .sink { result in
+            print("Download completed: \(result.identifier) at \(result.location)")
+        }
+    
+    let failedCancellable = backgroundHandler.downloadFailed
+        .sink { result in
+            print("Download failed: \(result.identifier) - \(result.error)")
+        }
+    
+    let progressCancellable = backgroundHandler.downloadProgress
+        .sink { result in
+            print("Download progress: \(result.identifier) - \(Int(result.progress * 100))%")
         }
     
     // Start a background download
-    let task = backgroundHandler.startBackgroundDownload(
+    let progressPublisher = backgroundHandler.startDownload(
+        identifier: "large-model-v2.0",
         from: URL(string: "https://example.com/models/large-model.zip")!,
-        modelName: "large-model",
-        version: "2.0",
-        destinationURL: URL(fileURLWithPath: "/path/to/destination"),
+        to: "/path/to/destination/large-model.zip",
         checksum: "abc123..."
     )
     
-    print("Started background download task: \(task)")
+    // Subscribe to specific download progress
+    let _ = progressPublisher
+        .sink { progress in
+            print("Large model progress: \(Int(progress * 100))%")
+        }
+    
+    print("Started background download task")
 }
 
 /// Example: File management

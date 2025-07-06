@@ -1,10 +1,11 @@
 import Foundation
 import AppKit
 import ApplicationServices
+import VoiceTypeCore
 
 /// Text injector using macOS Accessibility APIs
 public class AccessibilityInjector: TextInjector {
-    public let methodName = "Accessibility"
+    public var methodName: String { "Accessibility" }
     
     // Known problematic applications that don't support accessibility properly
     private let incompatibleApps = Set([
@@ -104,14 +105,14 @@ public class AccessibilityInjector: TextInjector {
         }
         
         let textInputRoles = [
-            kAXTextFieldRole,
-            kAXTextAreaRole,
-            kAXSearchFieldRole,
-            kAXComboBoxRole,
-            kAXStaticTextRole
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            // kAXSearchFieldRole, // Not available on macOS
+            kAXComboBoxRole as String,
+            kAXStaticTextRole as String
         ]
         
-        return textInputRoles.contains(roleString as CFString)
+        return textInputRoles.contains(roleString)
     }
     
     private func tryDirectValueSet(element: AXUIElement, text: String) -> String? {
@@ -127,9 +128,8 @@ public class AccessibilityInjector: TextInjector {
         
         if rangeResult == .success, let range = selectedRange {
             // Insert at selection
-            if let rangeValue = AXValueGetValue(range as! AXValue) {
-                var cfRange = CFRange()
-                AXValueGetValue(range as! AXValue, .cfRange, &cfRange)
+            var cfRange = CFRange()
+            if AXValueGetValue(range as! AXValue, .cfRange, &cfRange) {
                 
                 let nsRange = NSRange(location: cfRange.location, length: cfRange.length)
                 let mutableText = NSMutableString(string: currentText)
@@ -158,7 +158,7 @@ public class AccessibilityInjector: TextInjector {
         
         // If that fails, try to select all and replace
         var selectAllAction: CFTypeRef?
-        let actionResult = AXUIElementCopyAttributeValue(element, kAXActionNamesAttribute as CFString, &selectAllAction)
+        let actionResult = AXUIElementCopyAttributeValue(element, "AXActions" as CFString, &selectAllAction)
         
         if actionResult == .success, let actions = selectAllAction as? [String], actions.contains("AXSelectAll") {
             AXUIElementPerformAction(element, "AXSelectAll" as CFString)

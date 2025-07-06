@@ -237,7 +237,7 @@ public struct SettingsMigration {
         defaults.synchronize()
         
         // Validate imported settings
-        let errors = validateSettings(defaults)
+        let errors = validateSettings(defaults: defaults)
         if !errors.isEmpty {
             return (false, "Validation errors: \(errors.joined(separator: ", "))")
         }

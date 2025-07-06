@@ -1,9 +1,10 @@
 import SwiftUI
+import VoiceTypeCore
+import VoiceTypeImplementations
 
 /// Main menu bar interface for VoiceType
 public struct MenuBarView: View {
     @ObservedObject var coordinator: VoiceTypeCoordinator
-    @Environment(\.openSettings) private var openSettings
     
     public init(coordinator: VoiceTypeCoordinator) {
         self.coordinator = coordinator
@@ -119,7 +120,13 @@ public struct MenuBarView: View {
     private var bottomActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: {
-                openSettings()
+                if #available(macOS 13.0, *) {
+                    // Use newer settings API if available
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } else {
+                    // Fall back to preferences window
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                }
             }) {
                 HStack {
                     Image(systemName: "gear")

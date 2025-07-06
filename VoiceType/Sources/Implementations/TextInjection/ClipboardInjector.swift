@@ -1,9 +1,10 @@
 import Foundation
 import AppKit
+import VoiceTypeCore
 
 /// Text injector using clipboard and paste simulation
 public class ClipboardInjector: TextInjector {
-    public let methodName = "Clipboard"
+    public var methodName: String { "Clipboard" }
     private let pasteboard = NSPasteboard.general
     private let pasteDelay: TimeInterval = 0.1
     
@@ -22,7 +23,7 @@ public class ClipboardInjector: TextInjector {
             } catch let error as TextInjectionError {
                 completion(.failure(error))
             } catch {
-                completion(.failure(.clipboardError(error)))
+                completion(.failure(.clipboardError(error.localizedDescription)))
             }
         }
     }
@@ -42,9 +43,7 @@ public class ClipboardInjector: TextInjector {
         let success = pasteboard.setString(text, forType: .string)
         
         guard success else {
-            throw TextInjectionError.clipboardError(
-                NSError(domain: "VoiceType", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to set clipboard"])
-            )
+            throw TextInjectionError.clipboardError("Failed to set clipboard")
         }
         
         // Small delay to ensure clipboard is ready
@@ -116,7 +115,7 @@ private struct ClipboardItem {
 
 /// Enhanced clipboard injector with app-specific optimizations
 public class SmartClipboardInjector: ClipboardInjector {
-    public override let methodName = "SmartClipboard"
+    public override var methodName: String { "SmartClipboard" }
     
     private let appSpecificDelays: [String: TimeInterval] = [
         "com.apple.Safari": 0.15,

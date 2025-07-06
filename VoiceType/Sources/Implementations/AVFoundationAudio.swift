@@ -8,6 +8,7 @@
 import Foundation
 import AVFoundation
 import Combine
+import VoiceTypeCore
 
 /// AVFoundation-based audio processor implementation
 public final class AVFoundationAudio: AudioProcessor {
@@ -16,7 +17,6 @@ public final class AVFoundationAudio: AudioProcessor {
     
     private let configuration: AudioProcessorConfiguration
     private let audioEngine = AVAudioEngine()
-    private let audioSession = AVAudioSession.sharedInstance()
     
     private var recordingTimer: Timer?
     private var recordingCompletion: ((Result<AudioData, AudioProcessorError>) -> Void)?
@@ -39,6 +39,20 @@ public final class AVFoundationAudio: AudioProcessor {
     
     public var recordingState: RecordingState {
         stateQueue.sync { _recordingState }
+    }
+    
+    // MARK: - Protocol Conformance
+    
+    public var isRecording: Bool {
+        stateQueue.sync { _recordingState == .recording }
+    }
+    
+    public var audioLevelChanged: AsyncStream<Float> {
+        audioLevelPublisher
+    }
+    
+    public var recordingStateChanged: AsyncStream<RecordingState> {
+        recordingStatePublisher
     }
     
     // Audio level tracking
@@ -67,7 +81,6 @@ public final class AVFoundationAudio: AudioProcessor {
         }
         self.audioLevelContinuation = levelContinuation
         
-        setupAudioSession()
         setupNotifications()
     }
     
@@ -77,59 +90,52 @@ public final class AVFoundationAudio: AudioProcessor {
     
     // MARK: - Setup
     
-    private func setupAudioSession() {
-        do {
-            try audioSession.setCategory(.record, mode: .measurement, options: [])
-            try audioSession.setActive(false)
-        } catch {
-            print("Failed to setup audio session: \(error)")
-        }
-    }
     
     private func setupNotifications() {
-        // Monitor audio route changes
+        // Monitor audio device changes (macOS)
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleRouteChange),
-            name: AVAudioSession.routeChangeNotification,
-            object: audioSession
+            selector: #selector(handleDeviceChange),
+            name: .AVCaptureDeviceWasDisconnected,
+            object: nil
         )
         
-        // Monitor interruptions
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleInterruption),
-            name: AVAudioSession.interruptionNotification,
-            object: audioSession
+            selector: #selector(handleDeviceChange),
+            name: .AVCaptureDeviceWasConnected,
+            object: nil
         )
     }
     
     // MARK: - AudioProcessor Protocol
     
-    public func startRecording(maxDuration: TimeInterval = 5.0, completion: @escaping (Result<AudioData, AudioProcessorError>) -> Void) async throws {
+    public func startRecording() async throws {
+        try await startRecordingInternal(maxDuration: 5.0)
+    }
+    
+    private func startRecordingInternal(maxDuration: TimeInterval = 5.0) async throws {
         // Check state
         guard recordingState == .idle else {
-            throw AudioProcessorError.recordingFailed(NSError(domain: "VoiceType", code: -1, userInfo: [NSLocalizedDescriptionKey: "Recording already in progress"]))
+            throw AudioProcessorError.recordingInProgress
         }
         
         // Check permission
         let permission = checkMicrophonePermission()
-        guard permission == .authorized else {
-            if permission == .denied {
-                throw AudioProcessorError.microphoneAccessDenied
-            } else if permission == .restricted {
-                throw AudioProcessorError.microphoneAccessRestricted
+        if permission != .authorized {
+            if permission == .denied || permission == .restricted {
+                throw AudioProcessorError.permissionDenied
             } else {
                 let granted = await requestMicrophonePermission()
                 if !granted {
-                    throw AudioProcessorError.microphoneAccessDenied
+                    throw AudioProcessorError.permissionDenied
                 }
             }
         }
         
         // Update state
         updateRecordingState(.recording)
-        recordingCompletion = completion
+        // Will be set by caller if needed
         recordingStartTime = Date()
         
         // Clear buffer
@@ -138,8 +144,6 @@ public final class AVFoundationAudio: AudioProcessor {
         }
         
         do {
-            // Activate audio session
-            try audioSession.setActive(true)
             
             // Configure audio format
             let inputNode = audioEngine.inputNode
@@ -151,7 +155,7 @@ public final class AVFoundationAudio: AudioProcessor {
             )
             
             guard let format = recordingFormat else {
-                throw AudioProcessorError.invalidAudioFormat
+                throw AudioProcessorError.systemError("Invalid audio format")
             }
             
             // Install tap on input node
@@ -169,20 +173,31 @@ public final class AVFoundationAudio: AudioProcessor {
             
         } catch {
             // Clean up on error
-            stopRecordingInternal()
-            updateRecordingState(.error(.audioEngineStartFailed(error)))
-            throw AudioProcessorError.audioEngineStartFailed(error)
+            _ = stopRecordingInternal()
+            updateRecordingState(.error("Audio engine start failed: \(error.localizedDescription)"))
+            throw AudioProcessorError.systemError("Audio engine start failed: \(error.localizedDescription)")
         }
     }
     
-    public func stopRecording() {
-        stopRecordingInternal()
+    public func stopRecording() async -> AudioData {
+        await withCheckedContinuation { continuation in
+            let data = stopRecordingAndGetData()
+            continuation.resume(returning: data)
+        }
     }
     
     public func requestMicrophonePermission() async -> Bool {
+        // On macOS, we use AVCaptureDevice instead of AVAudioSession
         await withCheckedContinuation { continuation in
-            AVAudioSession.sharedInstance().requestRecordPermission { granted in
-                continuation.resume(returning: granted)
+            switch AVCaptureDevice.authorizationStatus(for: .audio) {
+            case .authorized:
+                continuation.resume(returning: true)
+            case .notDetermined:
+                AVCaptureDevice.requestAccess(for: .audio) { granted in
+                    continuation.resume(returning: granted)
+                }
+            default:
+                continuation.resume(returning: false)
             }
         }
     }
@@ -231,7 +246,7 @@ public final class AVFoundationAudio: AudioProcessor {
         guard !samples.isEmpty else { return 0.0 }
         
         // Calculate RMS (Root Mean Square)
-        let sumOfSquares = samples.reduce(0) { sum, sample in
+        let sumOfSquares = samples.reduce(Float(0)) { sum, sample in
             let floatSample = Float(sample) / Float(Int16.max)
             return sum + (floatSample * floatSample)
         }
@@ -246,9 +261,19 @@ public final class AVFoundationAudio: AudioProcessor {
         return max(0.0, min(1.0, normalizedDb))
     }
     
-    private func stopRecordingInternal() {
+    private func stopRecordingAndGetData() -> AudioData {
+        let samples = stopRecordingInternal()
+        return AudioData(
+            samples: samples,
+            sampleRate: configuration.sampleRate,
+            channelCount: configuration.channelCount,
+            timestamp: recordingStartTime ?? Date()
+        )
+    }
+    
+    private func stopRecordingInternal() -> [Int16] {
         // Update state
-        updateRecordingState(.stopping)
+        updateRecordingState(.processing)
         
         // Stop timers
         recordingTimer?.invalidate()
@@ -262,30 +287,19 @@ public final class AVFoundationAudio: AudioProcessor {
             audioEngine.stop()
         }
         
-        // Deactivate audio session
-        try? audioSession.setActive(false)
+        // No audio session deactivation needed for macOS
         
         // Process recorded data
         let recordedSamples = bufferQueue.sync {
             audioBuffer.readAll()
         }
         
-        if !recordedSamples.isEmpty {
-            let audioData = AudioData(
-                samples: recordedSamples,
-                sampleRate: configuration.sampleRate,
-                channelCount: configuration.channelCount,
-                timestamp: recordingStartTime ?? Date()
-            )
-            recordingCompletion?(.success(audioData))
-        } else {
-            recordingCompletion?(.failure(.bufferAllocationFailed))
-        }
-        
         // Reset state
         updateRecordingState(.idle)
         recordingCompletion = nil
         recordingStartTime = nil
+        
+        return recordedSamples
     }
     
     private func updateRecordingState(_ newState: RecordingState) {
@@ -299,7 +313,9 @@ public final class AVFoundationAudio: AudioProcessor {
     
     private func startRecordingTimer(duration: TimeInterval) {
         recordingTimer = Timer.scheduledTimer(withTimeInterval: duration, repeats: false) { [weak self] _ in
-            self?.stopRecording()
+            Task { @MainActor [weak self] in
+                _ = await self?.stopRecording()
+            }
         }
     }
     
@@ -312,38 +328,14 @@ public final class AVFoundationAudio: AudioProcessor {
     
     // MARK: - Notifications
     
-    @objc private func handleRouteChange(notification: Notification) {
+    @objc private func handleDeviceChange(notification: Notification) {
         guard recordingState == .recording else { return }
         
-        guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSession.routeChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
-            return
-        }
-        
-        switch reason {
-        case .oldDeviceUnavailable:
+        if notification.name == .AVCaptureDeviceWasDisconnected {
             // Audio device was disconnected
-            stopRecordingInternal()
-            updateRecordingState(.error(.audioDeviceNotAvailable))
-            recordingCompletion?(.failure(.audioDeviceNotAvailable))
-            
-        default:
-            break
-        }
-    }
-    
-    @objc private func handleInterruption(notification: Notification) {
-        guard let userInfo = notification.userInfo,
-              let typeValue = userInfo[AVAudioSession.interruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
-            return
-        }
-        
-        if type == .began && recordingState == .recording {
-            // Recording was interrupted
-            stopRecordingInternal()
-            updateRecordingState(.error(.recordingFailed(NSError(domain: "VoiceType", code: -2, userInfo: [NSLocalizedDescriptionKey: "Recording was interrupted"]))))
+            _ = stopRecordingInternal()
+            updateRecordingState(.error("Audio device disconnected"))
+            recordingCompletion?(.failure(.deviceDisconnected))
         }
     }
 }

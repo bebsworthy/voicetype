@@ -1,7 +1,6 @@
 import XCTest
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
-@testable import VoiceType
 
 /// End-to-end workflow tests for complete dictation flow
 final class EndToEndWorkflowTests: XCTestCase {

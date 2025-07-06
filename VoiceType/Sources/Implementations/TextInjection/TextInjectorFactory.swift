@@ -1,4 +1,5 @@
 import Foundation
+import VoiceTypeCore
 
 /// Factory for creating text injector configurations
 public class TextInjectorFactory {

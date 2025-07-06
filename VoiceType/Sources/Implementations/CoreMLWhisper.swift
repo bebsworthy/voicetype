@@ -1,10 +1,11 @@
 import Foundation
-import CoreML
+@preconcurrency import CoreML
 import Accelerate
+import VoiceTypeCore
 import AVFoundation
 
 /// CoreML-based Whisper implementation for speech transcription
-public class CoreMLWhisper: Transcriber {
+public class CoreMLWhisper: NSObject, Transcriber {
     // MARK: - Properties
     
     private var model: MLModel?
@@ -13,10 +14,25 @@ public class CoreMLWhisper: Transcriber {
     private let processingQueue = DispatchQueue(label: "com.voicetype.whisper", qos: .userInitiated)
     
     public private(set) var isReady: Bool = false
-    public var selectedLanguage: TranscriptionLanguage = .english
+    public var selectedLanguage: Language = .english
     
-    public var supportedLanguages: [TranscriptionLanguage] {
-        TranscriptionLanguage.allCases
+    public var supportedLanguages: [Language] {
+        Language.allCases
+    }
+    
+    public var modelInfo: ModelInfo {
+        ModelInfo(
+            type: modelType.toModelType,
+            version: "1.0",
+            path: URL(fileURLWithPath: modelPath),
+            sizeInBytes: Int64(modelType.sizeInMB * 1024 * 1024),
+            isLoaded: isReady,
+            lastUsed: Date()
+        )
+    }
+    
+    public var isModelLoaded: Bool {
+        return isReady
     }
     
     // Audio processing constants
@@ -35,6 +51,7 @@ public class CoreMLWhisper: Transcriber {
     public init(modelType: WhisperModel, modelPath: String) {
         self.modelType = modelType
         self.modelPath = modelPath
+        super.init()
     }
     
     /// Load the CoreML model
@@ -42,14 +59,14 @@ public class CoreMLWhisper: Transcriber {
         return try await withCheckedThrowingContinuation { continuation in
             processingQueue.async { [weak self] in
                 guard let self = self else {
-                    continuation.resume(throwing: TranscriberError.modelLoadingFailed(reason: "Instance deallocated"))
+                    continuation.resume(throwing: TranscriberError.modelLoadingFailed( "Instance deallocated"))
                     return
                 }
                 
                 do {
                     let url = URL(fileURLWithPath: self.modelPath)
                     guard FileManager.default.fileExists(atPath: url.path) else {
-                        throw TranscriberError.modelLoadingFailed(reason: "Model file not found at path: \(self.modelPath)")
+                        throw TranscriberError.modelLoadingFailed( "Model file not found at path: \(self.modelPath)")
                     }
                     
                     let configuration = MLModelConfiguration()
@@ -61,7 +78,7 @@ public class CoreMLWhisper: Transcriber {
                     continuation.resume()
                 } catch {
                     self.isReady = false
-                    continuation.resume(throwing: TranscriberError.modelLoadingFailed(reason: error.localizedDescription))
+                    continuation.resume(throwing: TranscriberError.modelLoadingFailed( error.localizedDescription))
                 }
             }
         }
@@ -69,7 +86,46 @@ public class CoreMLWhisper: Transcriber {
     
     // MARK: - Transcriber Protocol
     
-    public func transcribe(_ audioData: Data) async throws -> TranscriptionResult {
+    public func transcribe(_ audio: AudioData, language: Language?) async throws -> TranscriptionResult {
+        guard isReady, model != nil else {
+            throw TranscriberError.modelNotLoaded
+        }
+        
+        // Set the language if provided
+        if let lang = language {
+            selectedLanguage = lang
+        }
+        
+        // Convert AudioData to Data format
+        let audioData = audio.toData()
+        
+        // Process the audio
+        return try await transcribeData(audioData)
+    }
+    
+    public func loadModel(_ type: ModelType) async throws {
+        // Map ModelType to WhisperModel
+        let whisperModel: WhisperModel
+        switch type {
+        case .fast:
+            whisperModel = .tiny
+        case .balanced:
+            whisperModel = .base
+        case .accurate:
+            whisperModel = .small
+        }
+        
+        // Update model type if different
+        if whisperModel != modelType {
+            // Would need to reinitialize with new model path
+            throw TranscriberError.modelLoadingFailed("Cannot change model type after initialization")
+        }
+        
+        // Load the current model
+        try await loadModel()
+    }
+    
+    private func transcribeData(_ audioData: Data) async throws -> TranscriptionResult {
         guard isReady, let model = model else {
             throw TranscriberError.modelNotLoaded
         }
@@ -92,31 +148,29 @@ public class CoreMLWhisper: Transcriber {
         return result
     }
     
+    public func transcribe(_ audioData: Data) async throws -> TranscriptionResult {
+        return try await transcribeData(audioData)
+    }
+    
     // MARK: - Audio Processing
     
     private func prepareAudioBuffer(from audioData: Data) throws -> [Float] {
         // Convert Data to audio buffer
-        // Assume input is already 16kHz mono PCM float32
+        // Input is 16-bit PCM data
         guard audioData.count > 0 else {
             throw TranscriberError.invalidAudioData
         }
         
-        let floatCount = audioData.count / MemoryLayout<Float>.size
-        var audioBuffer = [Float](repeating: 0, count: floatCount)
+        let int16Count = audioData.count / MemoryLayout<Int16>.size
+        var int16Buffer = [Int16](repeating: 0, count: int16Count)
         
         audioData.withUnsafeBytes { rawBufferPointer in
-            let bufferPointer = rawBufferPointer.bindMemory(to: Float.self)
-            audioBuffer = Array(bufferPointer)
+            let bufferPointer = rawBufferPointer.bindMemory(to: Int16.self)
+            int16Buffer = Array(bufferPointer)
         }
         
-        // Normalize audio
-        var maxValue: Float = 0
-        vDSP_maxv(audioBuffer, 1, &maxValue, vDSP_Length(audioBuffer.count))
-        
-        if maxValue > 0 {
-            var scale = 1.0 / maxValue
-            vDSP_vsmul(audioBuffer, 1, &scale, &audioBuffer, 1, vDSP_Length(audioBuffer.count))
-        }
+        // Convert Int16 to normalized Float
+        let audioBuffer = int16Buffer.map { Float($0) / Float(Int16.max) }
         
         return audioBuffer
     }
@@ -195,16 +249,20 @@ public class CoreMLWhisper: Transcriber {
             var imagPart = [Float](repeating: 0, count: fftLength/2)
             
             frame.withUnsafeBufferPointer { framePtr in
-                var splitComplex = DSPSplitComplex(realp: &realPart, imagp: &imagPart)
-                let framePtr = UnsafePointer<Float>(framePtr.baseAddress!)
-                
-                // Convert interleaved complex to split complex
-                vDSP_ctoz(UnsafeRawPointer(framePtr).assumingMemoryBound(to: DSPComplex.self),
-                         2, &splitComplex, 1, vDSP_Length(fftLength/2))
-                
-                // Perform FFT
-                vDSP_fft_zrip(fftSetup, &splitComplex, 1,
-                             vDSP_Length(log2(Float(fftLength))), Int32(FFT_FORWARD))
+                realPart.withUnsafeMutableBufferPointer { realPtr in
+                    imagPart.withUnsafeMutableBufferPointer { imagPtr in
+                        var splitComplex = DSPSplitComplex(realp: realPtr.baseAddress!, imagp: imagPtr.baseAddress!)
+                        let framePtr = UnsafePointer<Float>(framePtr.baseAddress!)
+                        
+                        // Convert interleaved complex to split complex
+                        vDSP_ctoz(UnsafeRawPointer(framePtr).assumingMemoryBound(to: DSPComplex.self),
+                                 2, &splitComplex, 1, vDSP_Length(fftLength/2))
+                        
+                        // Perform FFT
+                        vDSP_fft_zrip(fftSetup, &splitComplex, 1,
+                                     vDSP_Length(log2(Float(fftLength))), Int32(FFT_FORWARD))
+                    }
+                }
             }
             
             // Convert to complex numbers
@@ -286,7 +344,7 @@ public class CoreMLWhisper: Transcriber {
         }
         
         // Convert back to Hz
-        var hzPoints = melPoints.map { melToHz($0) }
+        let hzPoints = melPoints.map { melToHz($0) }
         
         // Convert to FFT bin numbers
         var binPoints = [Int](repeating: 0, count: numMelBins + 2)
@@ -394,14 +452,19 @@ public class CoreMLWhisper: Transcriber {
         // Calculate confidence (simplified - in reality, this would come from the model)
         let confidence = calculateConfidence(from: textTokens)
         
+        // Create a single segment for the whole transcription
+        let segment = TranscriptionSegment(
+            text: text,
+            startTime: 0.0,
+            endTime: 5.0, // Default 5 second recording
+            confidence: confidence
+        )
+        
         return TranscriptionResult(
             text: text,
             confidence: confidence,
-            language: selectedLanguage,
-            metadata: [
-                "model": modelType.rawValue,
-                "processingTime": Date().timeIntervalSince1970
-            ]
+            segments: [segment],
+            language: selectedLanguage
         )
     }
     
@@ -411,11 +474,10 @@ public class CoreMLWhisper: Transcriber {
         var tokenIndices: [Int] = []
         
         for i in 0..<tokens.count {
-            if let value = tokens[i] as? NSNumber {
-                let tokenId = value.intValue
-                if tokenId > 0 { // Skip padding tokens
-                    tokenIndices.append(tokenId)
-                }
+            let value = tokens[i]
+            let tokenId = value.intValue
+            if tokenId > 0 { // Skip padding tokens
+                tokenIndices.append(tokenId)
             }
         }
         
@@ -445,9 +507,9 @@ private struct Complex<T: FloatingPoint> {
 
 private class CoreMLWhisperInput: NSObject, MLFeatureProvider {
     let melSpectrogram: MLMultiArray
-    let language: TranscriptionLanguage
+    let language: Language
     
-    init(melSpectrogram: MLMultiArray, language: TranscriptionLanguage) {
+    init(melSpectrogram: MLMultiArray, language: Language) {
         self.melSpectrogram = melSpectrogram
         self.language = language
         super.init()
@@ -474,7 +536,7 @@ private class CoreMLWhisperInput: NSObject, MLFeatureProvider {
         return nil
     }
     
-    private func getLanguageId(for language: TranscriptionLanguage) -> Int {
+    private func getLanguageId(for language: Language) -> Int {
         // Map languages to Whisper's language IDs
         switch language {
         case .english: return 0
@@ -488,6 +550,7 @@ private class CoreMLWhisperInput: NSObject, MLFeatureProvider {
         case .chinese: return 8
         case .japanese: return 9
         case .korean: return 10
+        @unknown default: return 0 // Default to English
         }
     }
 }

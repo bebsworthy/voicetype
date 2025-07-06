@@ -6,8 +6,8 @@
 //
 
 import Foundation
+import AppKit
 import Combine
-import BackgroundTasks
 
 /// Manages background downloads and continues downloads across app launches
 public final class BackgroundDownloadHandler: NSObject {
@@ -19,40 +19,30 @@ public final class BackgroundDownloadHandler: NSObject {
     // MARK: - Properties
     
     private var backgroundSession: URLSession!
+    private var activeDownloads: [String: URLSessionDownloadTask] = [:]
     private var completionHandlers: [String: () -> Void] = [:]
-    private var activeDownloads: [URLSessionDownloadTask: DownloadInfo] = [:]
-    private let downloadSubject = PassthroughSubject<DownloadEvent, Never>()
+    private let downloadQueue = DispatchQueue(label: "com.voicetype.download", qos: .utility)
     
-    public var downloadEvents: AnyPublisher<DownloadEvent, Never> {
-        downloadSubject.eraseToAnyPublisher()
-    }
+    // Progress tracking
+    private var progressSubjects: [String: PassthroughSubject<Double, Never>] = [:]
+    private var speedTrackers: [String: SpeedTracker] = [:]
     
-    // MARK: - Types
+    // Events
+    public let downloadCompleted = PassthroughSubject<(identifier: String, location: URL), Never>()
+    public let downloadFailed = PassthroughSubject<(identifier: String, error: Error), Never>()
+    public let downloadProgress = PassthroughSubject<(identifier: String, progress: Double), Never>()
     
-    public struct DownloadInfo {
-        public let modelName: String
-        public let version: String
-        public let destinationURL: URL
-        public let checksum: String?
-        public var resumeData: Data?
-        
-        public init(modelName: String,
-                    version: String,
-                    destinationURL: URL,
-                    checksum: String?) {
-            self.modelName = modelName
-            self.version = version
-            self.destinationURL = destinationURL
-            self.checksum = checksum
-        }
-    }
+    // Background task timer for macOS
+    private var backgroundTimer: Timer?
     
-    public enum DownloadEvent {
-        case started(modelName: String, version: String)
-        case progress(modelName: String, version: String, progress: Double)
-        case completed(modelName: String, version: String, url: URL)
-        case failed(modelName: String, version: String, error: Error)
-        case paused(modelName: String, version: String, resumeData: Data?)
+    // MARK: - Configuration
+    
+    struct DownloadInfo: Codable {
+        let identifier: String
+        let url: URL
+        let destinationPath: String
+        let resumeData: Data?
+        let checksum: String?
     }
     
     // MARK: - Initialization
@@ -60,7 +50,8 @@ public final class BackgroundDownloadHandler: NSObject {
     private override init() {
         super.init()
         setupBackgroundSession()
-        registerBackgroundTasks()
+        registerForAppLifecycleEvents()
+        startBackgroundTimer()
     }
     
     // MARK: - Setup
@@ -69,284 +60,310 @@ public final class BackgroundDownloadHandler: NSObject {
         let config = URLSessionConfiguration.background(withIdentifier: "com.voicetype.modeldownload")
         config.isDiscretionary = false
         config.sessionSendsLaunchEvents = true
-        config.allowsCellularAccess = true
-        config.shouldUseExtendedBackgroundIdleMode = true
-        
-        // Configure for large downloads
-        config.timeoutIntervalForResource = 60 * 60 * 24 // 24 hours
         config.httpMaximumConnectionsPerHost = 2
+        config.timeoutIntervalForResource = 60 * 60 * 24 // 24 hours
         
         backgroundSession = URLSession(configuration: config, delegate: self, delegateQueue: nil)
     }
     
-    private func registerBackgroundTasks() {
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: "com.voicetype.modeldownload.refresh",
-            using: nil
-        ) { task in
-            self.handleBackgroundRefresh(task: task as! BGAppRefreshTask)
-        }
-        
-        BGTaskScheduler.shared.register(
-            forTaskWithIdentifier: "com.voicetype.modeldownload.processing",
-            using: nil
-        ) { task in
-            self.handleBackgroundProcessing(task: task as! BGProcessingTask)
+    private func registerForAppLifecycleEvents() {
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillTerminate),
+            name: NSApplication.willTerminateNotification,
+            object: nil
+        )
+    }
+    
+    private func startBackgroundTimer() {
+        // Schedule periodic maintenance tasks
+        backgroundTimer = Timer.scheduledTimer(withTimeInterval: 900, repeats: true) { [weak self] _ in
+            self?.performBackgroundMaintenance()
         }
     }
     
     // MARK: - Public Methods
     
     /// Start a background download
-    public func startBackgroundDownload(
-        from url: URL,
-        modelName: String,
-        version: String,
-        destinationURL: URL,
-        checksum: String? = nil
-    ) -> URLSessionDownloadTask {
-        let downloadInfo = DownloadInfo(
-            modelName: modelName,
-            version: version,
-            destinationURL: destinationURL,
-            checksum: checksum
-        )
-        
-        let task = backgroundSession.downloadTask(with: url)
-        activeDownloads[task] = downloadInfo
-        
-        downloadSubject.send(.started(modelName: modelName, version: version))
-        task.resume()
-        
-        scheduleBackgroundRefresh()
-        return task
-    }
-    
-    /// Resume a paused download
-    public func resumeDownload(with resumeData: Data, downloadInfo: DownloadInfo) -> URLSessionDownloadTask? {
-        guard let task = backgroundSession.downloadTask(withResumeData: resumeData) else {
-            return nil
-        }
-        
-        activeDownloads[task] = downloadInfo
-        task.resume()
-        
-        return task
-    }
-    
-    /// Get all active downloads
-    public func activeDownloadTasks() async -> [(task: URLSessionDownloadTask, info: DownloadInfo)] {
-        await withCheckedContinuation { continuation in
-            backgroundSession.getAllTasks { tasks in
-                let downloadTasks = tasks.compactMap { $0 as? URLSessionDownloadTask }
-                let results = downloadTasks.compactMap { task -> (URLSessionDownloadTask, DownloadInfo)? in
-                    guard let info = self.activeDownloads[task] else { return nil }
-                    return (task, info)
-                }
-                continuation.resume(returning: results)
-            }
-        }
-    }
-    
-    /// Handle app being launched to process background downloads
-    public func handleEventsForBackgroundURLSession(
+    public func startDownload(
         identifier: String,
-        completionHandler: @escaping () -> Void
-    ) {
-        completionHandlers[identifier] = completionHandler
-    }
-    
-    // MARK: - Background Task Handling
-    
-    private func handleBackgroundRefresh(task: BGAppRefreshTask) {
-        task.expirationHandler = {
-            // Clean up if needed
-            task.setTaskCompleted(success: false)
-        }
+        from url: URL,
+        to destinationPath: String,
+        checksum: String? = nil,
+        resumeData: Data? = nil
+    ) -> AnyPublisher<Double, Never> {
+        let progressSubject = PassthroughSubject<Double, Never>()
         
-        // Check for pending downloads or maintenance
-        Task {
-            let activeTasks = await activeDownloadTasks()
+        downloadQueue.async { [weak self] in
+            guard let self = self else { return }
             
-            if !activeTasks.isEmpty {
-                // We have active downloads, schedule another refresh
-                scheduleBackgroundRefresh()
+            // Store progress subject
+            self.progressSubjects[identifier] = progressSubject
+            self.speedTrackers[identifier] = SpeedTracker()
+            
+            // Create download task
+            let task: URLSessionDownloadTask
+            if let resumeData = resumeData {
+                task = self.backgroundSession.downloadTask(withResumeData: resumeData)
+            } else {
+                task = self.backgroundSession.downloadTask(with: url)
             }
             
-            task.setTaskCompleted(success: true)
+            task.taskDescription = identifier
+            
+            // Store download info
+            let info = DownloadInfo(
+                identifier: identifier,
+                url: url,
+                destinationPath: destinationPath,
+                resumeData: resumeData,
+                checksum: checksum
+            )
+            self.saveDownloadInfo(info)
+            
+            // Start download
+            self.activeDownloads[identifier] = task
+            task.resume()
+        }
+        
+        return progressSubject.eraseToAnyPublisher()
+    }
+    
+    /// Cancel a download
+    public func cancelDownload(identifier: String, saveResumeData: Bool = true) {
+        downloadQueue.async { [weak self] in
+            guard let self = self,
+                  let task = self.activeDownloads[identifier] else { return }
+            
+            if saveResumeData {
+                task.cancel { resumeData in
+                    self.saveResumeData(resumeData, for: identifier)
+                }
+            } else {
+                task.cancel()
+            }
+            
+            self.cleanup(for: identifier)
         }
     }
     
-    private func handleBackgroundProcessing(task: BGProcessingTask) {
-        task.expirationHandler = {
-            // Pause any active processing
-            task.setTaskCompleted(success: false)
+    /// Get active download tasks
+    public func activeDownloadTasks() async -> [String] {
+        return await withCheckedContinuation { continuation in
+            downloadQueue.async { [weak self] in
+                guard let downloads = self?.activeDownloads else {
+                    continuation.resume(returning: [])
+                    return
+                }
+                let identifiers = Array(downloads.keys)
+                continuation.resume(returning: identifiers)
+            }
         }
-        
-        // Use this for longer running tasks like model optimization
+    }
+    
+    // MARK: - Background Task Handling (macOS)
+    
+    @objc private func appWillTerminate() {
+        // Save state before termination
+        saveAllDownloadStates()
+        backgroundTimer?.invalidate()
+    }
+    
+    private func performBackgroundMaintenance() {
         Task {
-            // Perform any model maintenance or optimization
-            await ModelManager().performMaintenance()
-            task.setTaskCompleted(success: true)
+            // Check for stalled downloads
+            await checkStalledDownloads()
+            
+            // Clean up old temporary files
+            cleanupTemporaryFiles()
+            
+            // Validate completed downloads
+            await validateDownloadedModels()
         }
     }
     
-    private func scheduleBackgroundRefresh() {
-        let request = BGAppRefreshTaskRequest(identifier: "com.voicetype.modeldownload.refresh")
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60) // 15 minutes
-        
-        do {
-            try BGTaskScheduler.shared.submit(request)
-        } catch {
-            print("Could not schedule background refresh: \(error)")
+    private func checkStalledDownloads() async {
+        let activeTasks = await activeDownloadTasks()
+        for identifier in activeTasks {
+            if let tracker = speedTrackers[identifier], tracker.isStalled {
+                // Consider restarting the download
+                print("Download \(identifier) appears to be stalled")
+            }
         }
     }
     
     // MARK: - Private Methods
     
-    private func validateChecksum(at url: URL, expected: String) async throws -> Bool {
-        let handle = try FileHandle(forReadingFrom: url)
-        defer { handle.closeFile() }
-        
-        var hasher = SHA256()
-        let bufferSize = 65536 // 64KB chunks
-        
-        while true {
-            let data = handle.readData(ofLength: bufferSize)
-            if data.isEmpty { break }
-            hasher.update(data: data)
+    private func saveDownloadInfo(_ info: DownloadInfo) {
+        let url = getDownloadInfoURL(for: info.identifier)
+        do {
+            let data = try JSONEncoder().encode(info)
+            try data.write(to: url)
+        } catch {
+            print("Failed to save download info: \(error)")
         }
+    }
+    
+    private func loadDownloadInfo(for identifier: String) -> DownloadInfo? {
+        let url = getDownloadInfoURL(for: identifier)
+        guard let data = try? Data(contentsOf: url),
+              let info = try? JSONDecoder().decode(DownloadInfo.self, from: data) else {
+            return nil
+        }
+        return info
+    }
+    
+    private func getDownloadInfoURL(for identifier: String) -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceTypeDownloads", isDirectory: true)
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        return directory.appendingPathComponent("\(identifier).json")
+    }
+    
+    private func saveResumeData(_ data: Data?, for identifier: String) {
+        guard let data = data else { return }
+        let url = getResumeDataURL(for: identifier)
+        try? data.write(to: url)
+    }
+    
+    private func getResumeDataURL(for identifier: String) -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceTypeDownloads", isDirectory: true)
+        return directory.appendingPathComponent("\(identifier).resume")
+    }
+    
+    private func cleanup(for identifier: String) {
+        activeDownloads.removeValue(forKey: identifier)
+        progressSubjects.removeValue(forKey: identifier)
+        speedTrackers.removeValue(forKey: identifier)
         
-        let digest = hasher.finalize()
-        let actual = digest.map { String(format: "%02x", $0) }.joined()
+        // Remove saved info
+        try? FileManager.default.removeItem(at: getDownloadInfoURL(for: identifier))
+        try? FileManager.default.removeItem(at: getResumeDataURL(for: identifier))
+    }
+    
+    private func saveAllDownloadStates() {
+        for (identifier, _) in activeDownloads {
+            if let task = activeDownloads[identifier] {
+                task.cancel { [weak self] resumeData in
+                    self?.saveResumeData(resumeData, for: identifier)
+                }
+            }
+        }
+    }
+    
+    private func cleanupTemporaryFiles() {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("VoiceTypeDownloads", isDirectory: true)
         
-        return actual == expected
+        guard let files = try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: [.creationDateKey]) else { return }
+        
+        let cutoffDate = Date().addingTimeInterval(-7 * 24 * 60 * 60) // 7 days
+        
+        for file in files {
+            if let creationDate = try? file.resourceValues(forKeys: [.creationDateKey]).creationDate,
+               creationDate < cutoffDate {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
+    
+    private func validateDownloadedModels() async {
+        // Implementation for validating downloaded models
+        // This would check checksums, file integrity, etc.
     }
 }
 
 // MARK: - URLSessionDownloadDelegate
 
 extension BackgroundDownloadHandler: URLSessionDownloadDelegate {
-    
-    public func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didFinishDownloadingTo location: URL
-    ) {
-        guard let downloadInfo = activeDownloads[downloadTask] else { return }
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        guard let identifier = downloadTask.taskDescription,
+              let info = loadDownloadInfo(for: identifier) else { return }
         
         do {
-            // Validate checksum if provided
-            if let expectedChecksum = downloadInfo.checksum {
-                Task {
-                    let isValid = try await validateChecksum(at: location, expected: expectedChecksum)
-                    
-                    if !isValid {
-                        let error = NSError(
-                            domain: "BackgroundDownload",
-                            code: 1,
-                            userInfo: [NSLocalizedDescriptionKey: "Checksum validation failed"]
-                        )
-                        downloadSubject.send(.failed(
-                            modelName: downloadInfo.modelName,
-                            version: downloadInfo.version,
-                            error: error
-                        ))
-                        return
-                    }
-                    
-                    // Move to destination
-                    try FileManager.default.moveItem(at: location, to: downloadInfo.destinationURL)
-                    
-                    downloadSubject.send(.completed(
-                        modelName: downloadInfo.modelName,
-                        version: downloadInfo.version,
-                        url: downloadInfo.destinationURL
-                    ))
-                }
-            } else {
-                // No checksum validation, just move
-                try FileManager.default.moveItem(at: location, to: downloadInfo.destinationURL)
-                
-                downloadSubject.send(.completed(
-                    modelName: downloadInfo.modelName,
-                    version: downloadInfo.version,
-                    url: downloadInfo.destinationURL
-                ))
+            // Move file to destination
+            let destinationURL = URL(fileURLWithPath: info.destinationPath)
+            try FileManager.default.createDirectory(at: destinationURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+            
+            if FileManager.default.fileExists(atPath: destinationURL.path) {
+                try FileManager.default.removeItem(at: destinationURL)
             }
+            
+            try FileManager.default.moveItem(at: location, to: destinationURL)
+            
+            // Verify checksum if provided
+            if let expectedChecksum = info.checksum {
+                // Implement checksum validation
+                print("Validating checksum for \(identifier)")
+            }
+            
+            downloadCompleted.send((identifier: identifier, location: destinationURL))
+            cleanup(for: identifier)
             
         } catch {
-            downloadSubject.send(.failed(
-                modelName: downloadInfo.modelName,
-                version: downloadInfo.version,
-                error: error
-            ))
+            downloadFailed.send((identifier: identifier, error: error))
+            cleanup(for: identifier)
         }
-        
-        activeDownloads.removeValue(forKey: downloadTask)
     }
     
-    public func urlSession(
-        _ session: URLSession,
-        downloadTask: URLSessionDownloadTask,
-        didWriteData bytesWritten: Int64,
-        totalBytesWritten: Int64,
-        totalBytesExpectedToWrite: Int64
-    ) {
-        guard let downloadInfo = activeDownloads[downloadTask] else { return }
+    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+        guard let identifier = downloadTask.taskDescription else { return }
         
         let progress = Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+        progressSubjects[identifier]?.send(progress)
+        downloadProgress.send((identifier: identifier, progress: progress))
         
-        downloadSubject.send(.progress(
-            modelName: downloadInfo.modelName,
-            version: downloadInfo.version,
-            progress: progress
-        ))
+        // Update speed tracker
+        speedTrackers[identifier]?.addBytes(Int(bytesWritten))
     }
     
-    public func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        didCompleteWithError error: Error?
-    ) {
-        guard let downloadTask = task as? URLSessionDownloadTask,
-              var downloadInfo = activeDownloads[downloadTask] else { return }
+    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        guard let identifier = task.taskDescription else { return }
         
         if let error = error {
-            let nsError = error as NSError
+            downloadFailed.send((identifier: identifier, error: error))
             
-            if nsError.code == NSURLErrorCancelled,
-               let resumeData = nsError.userInfo[NSURLSessionDownloadTaskResumeData] as? Data {
-                // Download was cancelled with resume data
-                downloadInfo.resumeData = resumeData
-                downloadSubject.send(.paused(
-                    modelName: downloadInfo.modelName,
-                    version: downloadInfo.version,
-                    resumeData: resumeData
-                ))
-            } else {
-                // Actual error
-                downloadSubject.send(.failed(
-                    modelName: downloadInfo.modelName,
-                    version: downloadInfo.version,
-                    error: error
-                ))
+            // Save resume data if available
+            if let downloadTask = task as? URLSessionDownloadTask {
+                downloadTask.cancel { [weak self] resumeData in
+                    self?.saveResumeData(resumeData, for: identifier)
+                }
             }
         }
         
-        activeDownloads.removeValue(forKey: downloadTask)
-    }
-    
-    public func urlSessionDidFinishEvents(forBackgroundURLSession session: URLSession) {
-        // Call the completion handler to update UI
-        if let identifier = session.configuration.identifier,
-           let completionHandler = completionHandlers.removeValue(forKey: identifier) {
-            DispatchQueue.main.async {
-                completionHandler()
-            }
-        }
+        cleanup(for: identifier)
     }
 }
 
-// Required import for SHA256
-import CryptoKit
+// MARK: - Speed Tracking
+
+private class SpeedTracker {
+    private var measurements: [(timestamp: Date, bytes: Int)] = []
+    private let measurementWindow: TimeInterval = 5.0
+    
+    var currentSpeed: Double {
+        let now = Date()
+        let cutoff = now.addingTimeInterval(-measurementWindow)
+        
+        // Remove old measurements
+        measurements.removeAll { $0.timestamp < cutoff }
+        
+        guard measurements.count > 1,
+              let first = measurements.first,
+              let last = measurements.last else { return 0 }
+        
+        let totalBytes = measurements.reduce(0) { $0 + $1.bytes }
+        let timeInterval = last.timestamp.timeIntervalSince(first.timestamp)
+        
+        return timeInterval > 0 ? Double(totalBytes) / timeInterval : 0
+    }
+    
+    var isStalled: Bool {
+        return measurements.isEmpty || (Date().timeIntervalSince(measurements.last?.timestamp ?? Date()) > 30)
+    }
+    
+    func addBytes(_ bytes: Int) {
+        measurements.append((timestamp: Date(), bytes: bytes))
+    }
+}

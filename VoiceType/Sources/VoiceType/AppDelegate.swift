@@ -20,6 +20,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     // MARK: - NSApplicationDelegate
     
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Configure app to be menu bar only (no dock icon)
+        NSApp.setActivationPolicy(.accessory)
+        
         // Additional setup after app launch
         setupBackgroundTasks()
         setupNotificationHandlers()
@@ -49,7 +52,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // Handle dock icon click
         if !flag {
             // Show settings window
-            NSApp.sendAction(#selector(NSApp.showSettingsWindow), to: nil, from: nil)
+            if #available(macOS 13.0, *) {
+                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+            } else {
+                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            }
         }
         return true
     }
@@ -89,7 +96,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // This will be used by ModelDownloader for background downloads
     }
     
-    private async func checkPendingDownloads() {
+    private func checkPendingDownloads() async {
         // Check for pending model downloads
         // This would be implemented with ModelManager
     }
@@ -144,21 +151,21 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
     
-    @objc private func systemWillSleep(_ notification: Notification) {
+    @MainActor @objc private func systemWillSleep(_ notification: Notification) {
         // Handle system sleep
         lifecycleManager?.handleEnterBackground()
     }
     
-    @objc private func systemDidWake(_ notification: Notification) {
+    @MainActor @objc private func systemDidWake(_ notification: Notification) {
         // Handle system wake
         lifecycleManager?.handleEnterForeground()
     }
     
-    @objc private func screenDidLock(_ notification: Notification) {
+    @MainActor @objc private func screenDidLock(_ notification: Notification) {
         // Handle screen lock - pause recording if active
     }
     
-    @objc private func screenDidUnlock(_ notification: Notification) {
+    @MainActor @objc private func screenDidUnlock(_ notification: Notification) {
         // Handle screen unlock
     }
     
@@ -227,11 +234,3 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 }
 
-// MARK: - SMAppService Extension (macOS 13.0+)
-
-@available(macOS 13.0, *)
-extension SMAppService {
-    static var mainApp: SMAppService {
-        SMAppService(bundleIdentifier: Bundle.main.bundleIdentifier!)
-    }
-}

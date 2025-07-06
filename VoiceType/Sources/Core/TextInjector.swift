@@ -3,19 +3,74 @@ import Foundation
 /// Protocol defining the interface for inserting text into target applications.
 /// Implementations handle different injection methods (accessibility API, clipboard, etc.)
 public protocol TextInjector {
-    /// Checks if this injector can insert text into the specified target application.
-    /// - Parameter target: The application to check compatibility with
-    /// - Returns: true if injection is supported for this application
-    func canInject(into target: TargetApplication) -> Bool
+    /// Human-readable name of this injection method
+    var methodName: String { get }
     
-    /// Injects the transcribed text into the target application at the cursor position.
+    /// Injects text using this method
     /// - Parameters:
-    ///   - text: The text to insert
-    ///   - target: The target application to insert into
-    /// - Throws: InjectionError if insertion fails or is not supported
-    func inject(_ text: String, into target: TargetApplication) async throws
+    ///   - text: The text to inject
+    ///   - completion: Callback with the result
+    func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void)
     
-    /// Gets the currently focused application that would receive text input.
-    /// - Returns: The target application if one is focused, nil otherwise
-    func getFocusedTarget() async -> TargetApplication?
+    /// Checks if this injector is compatible with the current context
+    /// - Returns: true if this injector can be used right now
+    func isCompatibleWithCurrentContext() -> Bool
 }
+
+/// Errors that can occur during text injection
+public enum TextInjectionError: LocalizedError {
+    case incompatibleApplication(String)
+    case noFocusedElement
+    case accessibilityNotEnabled
+    case clipboardError(String)
+    case injectionFailed(reason: String)
+    case timeout
+    
+    public var errorDescription: String? {
+        switch self {
+        case .incompatibleApplication(let app):
+            return "Text injection not supported for \(app)"
+        case .noFocusedElement:
+            return "No text field is currently focused"
+        case .accessibilityNotEnabled:
+            return "Accessibility permission required. Grant permission in System Preferences > Privacy & Security > Accessibility"
+        case .clipboardError(let reason):
+            return "Clipboard operation failed: \(reason)"
+        case .injectionFailed(let reason):
+            return "Failed to inject text: \(reason)"
+        case .timeout:
+            return "Text injection timed out"
+        }
+    }
+}
+
+/// Context information about the target application
+public struct ApplicationContext {
+    public let bundleIdentifier: String?
+    public let name: String
+    public let isRunning: Bool
+    
+    public init(bundleIdentifier: String?, name: String, isRunning: Bool) {
+        self.bundleIdentifier = bundleIdentifier
+        self.name = name
+        self.isRunning = isRunning
+    }
+}
+
+/// Result of a text injection operation
+public struct InjectionResult {
+    public let success: Bool
+    public let method: String
+    public let error: TextInjectionError?
+    public let fallbackUsed: Bool
+    
+    public init(success: Bool, method: String, error: TextInjectionError? = nil, fallbackUsed: Bool = false) {
+        self.success = success
+        self.method = method
+        self.error = error
+        self.fallbackUsed = fallbackUsed
+    }
+}
+
+// Note: TextInjectorManager is implemented in the Implementations module
+// to avoid circular dependencies

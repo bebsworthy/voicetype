@@ -1,8 +1,9 @@
 import Foundation
+import VoiceTypeCore
 
 /// Mock text injector for testing purposes
 public class MockTextInjector: TextInjector {
-    public let methodName = "Mock"
+    public var methodName: String { "Mock" }
     
     // Configuration
     public var shouldSucceed = true
@@ -12,7 +13,7 @@ public class MockTextInjector: TextInjector {
     
     // Tracking
     public private(set) var injectionHistory: [InjectionRecord] = []
-    public private(set) var compatibilityCheckCount = 0
+    public var compatibilityCheckCount = 0
     
     public init() {}
     
@@ -76,7 +77,7 @@ public struct InjectionRecord {
 
 /// Advanced mock injector with configurable behaviors
 public class ConfigurableMockInjector: MockTextInjector {
-    public override let methodName = "ConfigurableMock"
+    public override var methodName: String { "ConfigurableMock" }
     
     // Advanced configuration
     public var failurePattern: FailurePattern = .never

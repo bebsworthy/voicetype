@@ -12,7 +12,7 @@ import Network
 
 /// Observable model downloader with progress tracking and resumable downloads
 @MainActor
-public final class ModelDownloader: ObservableObject {
+public final class ModelDownloader: NSObject, ObservableObject {
     
     // MARK: - Published Properties
     
@@ -358,11 +358,11 @@ public final class ModelDownloader: ObservableObject {
 // MARK: - URLSessionDownloadDelegate
 
 extension ModelDownloader: URLSessionDownloadDelegate {
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+    nonisolated public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         // Handled in completion handler
     }
     
-    public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
+    nonisolated public func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didWriteData bytesWritten: Int64, totalBytesWritten: Int64, totalBytesExpectedToWrite: Int64) {
         Task { @MainActor in
             guard var task = currentDownloadTask else { return }
             
@@ -382,7 +382,7 @@ extension ModelDownloader: URLSessionDownloadDelegate {
         }
     }
     
-    public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+    nonisolated public func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         if let error = error {
             Task { @MainActor in
                 isDownloading = false

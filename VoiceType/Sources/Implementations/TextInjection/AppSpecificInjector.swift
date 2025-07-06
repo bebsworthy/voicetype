@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import VoiceTypeCore
 
 /// Protocol for app-specific injection strategies
 public protocol AppInjectionStrategy {
@@ -10,7 +11,7 @@ public protocol AppInjectionStrategy {
 
 /// Manages app-specific injection strategies
 public class AppSpecificInjector: TextInjector {
-    public let methodName = "AppSpecific"
+    public var methodName: String { "AppSpecific" }
     
     private var strategies: [String: AppInjectionStrategy] = [:]
     private let fallbackInjector: TextInjector
@@ -274,7 +275,7 @@ class XcodeInjectionStrategy: AppInjectionStrategy {
         
         if result != .success {
             // Xcode might need a different approach
-            throw TextInjectionError.incompatibleApplication(appName: "Xcode")
+            throw TextInjectionError.incompatibleApplication("Xcode")
         }
     }
 }

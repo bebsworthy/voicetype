@@ -1,4 +1,7 @@
 import SwiftUI
+import VoiceTypeCore
+import VoiceTypeImplementations
+import VoiceTypeUI
 
 /// Main VoiceType application
 @main
@@ -8,32 +11,33 @@ struct VoiceTypeApp: App {
     @StateObject private var lifecycleManager = AppLifecycleManager()
     @State private var showingOnboarding = false
     @State private var showingInitializationError = false
+    @State private var isInitialized = false
     
     init() {
-        // Configure app to be menu bar only (no dock icon)
-        NSApp.setActivationPolicy(.accessory)
+        // Init
     }
     
     var body: some Scene {
         // Menu Bar Extra
         MenuBarExtra {
             MenuBarView(coordinator: coordinator)
+                .task {
+                    guard !isInitialized else { return }
+                    isInitialized = true
+                    await initializeApp()
+                }
         } label: {
             MenuBarExtraIcon(coordinator: coordinator)
                 .help("VoiceType - \(coordinator.recordingState.description)")
         }
         .menuBarExtraStyle(.window)
-        .onAppear {
-            Task {
-                await initializeApp()
-            }
-        }
         
         // Settings Window
         Settings {
             SettingsView()
                 .environmentObject(coordinator)
         }
+        .defaultSize(width: 600, height: 400)
         .commands {
             // Custom commands
             CommandGroup(after: .appInfo) {
@@ -470,5 +474,82 @@ struct InstructionRow: View {
             Text(text)
                 .font(.callout)
         }
+    }
+}
+
+// MARK: - Settings View
+
+struct SettingsView: View {
+    @EnvironmentObject var coordinator: VoiceTypeCoordinator
+    
+    var body: some View {
+        TabView {
+            GeneralSettingsView()
+                .tabItem {
+                    Label("General", systemImage: "gear")
+                }
+            
+            PermissionStatusView(permissionManager: PermissionManager())
+                .tabItem {
+                    Label("Permissions", systemImage: "lock.shield")
+                }
+            
+            AboutView()
+                .tabItem {
+                    Label("About", systemImage: "info.circle")
+                }
+        }
+        .frame(width: 600, height: 400)
+    }
+}
+
+struct GeneralSettingsView: View {
+    @AppStorage("globalHotkey") private var globalHotkey = "ctrl+shift+v"
+    @AppStorage("selectedModel") private var selectedModel = "fast"
+    
+    var body: some View {
+        Form {
+            Section("Recording") {
+                Picker("AI Model", selection: $selectedModel) {
+                    Text("Fast").tag("fast")
+                    Text("Balanced").tag("balanced")
+                    Text("Accurate").tag("accurate")
+                }
+                
+                HStack {
+                    Text("Global Hotkey:")
+                    TextField("Hotkey", text: $globalHotkey)
+                        .frame(width: 120)
+                }
+            }
+        }
+        .padding()
+    }
+}
+
+struct AboutView: View {
+    var body: some View {
+        VStack(spacing: 20) {
+            Image(nsImage: NSApp.applicationIconImage)
+                .resizable()
+                .frame(width: 128, height: 128)
+            
+            Text("VoiceType")
+                .font(.largeTitle)
+                .fontWeight(.bold)
+            
+            Text("Version 1.0.0")
+                .foregroundColor(.secondary)
+            
+            Text("Voice-to-text input for macOS")
+                .font(.headline)
+            
+            Spacer()
+            
+            Link("GitHub Repository", destination: URL(string: "https://github.com/VoiceType/VoiceType")!)
+                .buttonStyle(.link)
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

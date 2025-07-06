@@ -87,13 +87,13 @@ public extension FileManager {
     }
     
     /// List all installed models
-    func installedModels() throws -> [ModelInfo] {
+    func installedModels() throws -> [ModelFileInfo] {
         let modelsDir = try modelsDirectory
         let contents = try contentsOfDirectory(at: modelsDir,
                                              includingPropertiesForKeys: [.isDirectoryKey, .creationDateKey],
                                              options: .skipsHiddenFiles)
         
-        var models: [ModelInfo] = []
+        var models: [ModelFileInfo] = []
         
         for modelDir in contents {
             let resourceValues = try modelDir.resourceValues(forKeys: [.isDirectoryKey])
@@ -220,13 +220,13 @@ public extension FileManager {
         return size
     }
     
-    private func loadModelInfo(at url: URL, name: String, version: String?) throws -> ModelInfo? {
+    private func loadModelInfo(at url: URL, name: String, version: String?) throws -> ModelFileInfo? {
         // Look for model metadata file
         let metadataPath = url.appendingPathComponent("metadata.json")
         
         if fileExists(atPath: metadataPath.path) {
             let data = try Data(contentsOf: metadataPath)
-            var info = try JSONDecoder().decode(ModelInfo.self, from: data)
+            var info = try JSONDecoder().decode(ModelFileInfo.self, from: data)
             info.name = name // Ensure consistency
             info.version = version ?? info.version
             return info
@@ -237,7 +237,7 @@ public extension FileManager {
         let creationDate = attributes[.creationDate] as? Date ?? Date()
         let size = try directorySize(at: url)
         
-        return ModelInfo(
+        return ModelFileInfo(
             name: name,
             version: version ?? "1.0",
             path: url,
@@ -250,7 +250,7 @@ public extension FileManager {
 
 // MARK: - Model Info
 
-public struct ModelInfo: Codable {
+public struct ModelFileInfo: Codable {
     public var name: String
     public var version: String
     public var path: URL

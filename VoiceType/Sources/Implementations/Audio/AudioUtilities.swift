@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import VoiceTypeCore
 import Accelerate
 
 /// Utilities for audio processing and conversion

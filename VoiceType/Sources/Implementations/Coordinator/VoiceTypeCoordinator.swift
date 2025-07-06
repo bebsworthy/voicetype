@@ -3,6 +3,7 @@ import Combine
 import SwiftUI
 import AVFoundation
 import AppKit
+import VoiceTypeCore
 
 /// Main coordinator that manages app state and orchestrates all operations
 ///
@@ -86,7 +87,7 @@ public class VoiceTypeCoordinator: ObservableObject {
     ) {
         // Use real implementations by default, allow injection for testing
         self.audioProcessor = audioProcessor ?? AVFoundationAudio()
-        self.transcriber = transcriber ?? TranscriberFactory.createTranscriber()
+        self.transcriber = transcriber ?? TranscriberFactory.createDefault()
         self.textInjector = textInjector ?? AccessibilityInjector()
         self.permissionManager = permissionManager ?? PermissionManager()
         self.hotkeyManager = hotkeyManager ?? HotkeyManager()
@@ -200,7 +201,7 @@ public class VoiceTypeCoordinator: ObservableObject {
     /// Change the selected AI model
     public func changeModel(_ model: ModelType) async {
         // Don't change model during active operations
-        guard recordingState == .idle || recordingState == .error(_) else {
+        guard case .idle = recordingState else {
             errorMessage = "Cannot change model while recording or processing"
             return
         }
@@ -219,7 +220,8 @@ public class VoiceTypeCoordinator: ObservableObject {
             errorMessage = "Model \(selectedModel.displayName) needs to be downloaded first"
             
             // Try fallback to embedded model
-            if selectedModel != .fast && await isModelAvailable(.fast) {
+            let isFastAvailable = await isModelAvailable(.fast)
+            if selectedModel != .fast && isFastAvailable {
                 selectedModel = .fast
                 errorMessage = "Using fast model as fallback"
             } else {
@@ -266,22 +268,22 @@ public class VoiceTypeCoordinator: ObservableObject {
     
     private func setupBindings() {
         // Listen to audio processor state changes
-        audioProcessor.recordingStateChanged
-            .sink { [weak self] state in
-                Task { @MainActor in
-                    self?.handleAudioStateChange(state)
+        Task {
+            for await state in audioProcessor.recordingStateChanged {
+                await MainActor.run {
+                    handleAudioStateChange(state)
                 }
             }
-            .store(in: &cancellables)
+        }
         
         // Listen to audio level changes for visual feedback
-        audioProcessor.audioLevelChanged
-            .sink { [weak self] level in
-                Task { @MainActor in
-                    self?.audioLevel = level
+        Task {
+            for await level in audioProcessor.audioLevelChanged {
+                await MainActor.run {
+                    audioLevel = level
                 }
             }
-            .store(in: &cancellables)
+        }
         
         // Monitor permission changes
         permissionManager.$microphonePermission
@@ -350,7 +352,7 @@ public class VoiceTypeCoordinator: ObservableObject {
         
         // For downloaded models, check with ModelManager
         let installedModels = modelManager.installedModels
-        return installedModels.contains { $0.name.lowercased().contains(model.rawValue) }
+        return installedModels.contains { $0.type == model }
     }
     
     private func checkPermissions() async -> Bool {
@@ -571,39 +573,49 @@ public class VoiceTypeCoordinator: ObservableObject {
     
     /// Inject transcription with fallback strategies
     private func injectTranscription(_ text: String) async {
-        do {
-            if let target = await textInjector.getFocusedTarget() {
-                try await textInjector.inject(text, into: target)
-                await transitionToState(.success)
-                
-                // Clear error message on success
-                errorMessage = nil
-            } else {
-                // No focused target, use clipboard fallback
-                await copyToClipboard(text)
-                errorMessage = "Text copied to clipboard. Press ⌘V to paste."
-                await transitionToState(.success)
-            }
-            
-            // Reset to idle after success
-            Task {
-                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                if recordingState == .success {
-                    await transitionToState(.idle)
-                }
-            }
-            
-        } catch {
-            // If injection fails, fallback to clipboard
-            await copyToClipboard(text)
-            errorMessage = "Text injection failed. Text copied to clipboard instead."
-            await transitionToState(.success)
-            
-            // Still count as success since user has the text
-            Task {
-                try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
-                if recordingState == .success {
-                    await transitionToState(.idle)
+        await withCheckedContinuation { continuation in
+            textInjector.inject(text: text) { [weak self] result in
+                Task { @MainActor in
+                    guard let self = self else {
+                        continuation.resume()
+                        return
+                    }
+                    
+                    switch result {
+                    case .success:
+                        await self.transitionToState(.success)
+                        self.errorMessage = nil
+                        
+                        // Reset to idle after success
+                        Task {
+                            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            if self.recordingState == .success {
+                                await self.transitionToState(.idle)
+                            }
+                        }
+                        
+                    case .failure(let error):
+                        // If injection fails, fallback to clipboard
+                        await self.copyToClipboard(text)
+                        
+                        if case .noFocusedElement = error {
+                            self.errorMessage = "Text copied to clipboard. Press ⌘V to paste."
+                        } else {
+                            self.errorMessage = "Text injection failed. Text copied to clipboard instead."
+                        }
+                        
+                        await self.transitionToState(.success)
+                        
+                        // Still count as success since user has the text
+                        Task {
+                            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            if self.recordingState == .success {
+                                await self.transitionToState(.idle)
+                            }
+                        }
+                    }
+                    
+                    continuation.resume()
                 }
             }
         }
@@ -651,9 +663,9 @@ public class VoiceTypeCoordinator: ObservableObject {
     
     /// Start monitoring for audio device reconnection
     private func startAudioDeviceMonitoring() {
-        // Monitor audio route changes
+        // Monitor audio device changes on macOS
         NotificationCenter.default.addObserver(
-            forName: AVAudioSession.routeChangeNotification,
+            forName: .AVCaptureDeviceWasConnected,
             object: nil,
             queue: .main
         ) { [weak self] notification in
@@ -661,42 +673,49 @@ public class VoiceTypeCoordinator: ObservableObject {
                 await self?.handleAudioRouteChange(notification)
             }
         }
+        
+        NotificationCenter.default.addObserver(
+            forName: .AVCaptureDeviceWasDisconnected,
+            object: nil,
+            queue: .main
+        ) { [weak self] notification in
+            Task { @MainActor in
+                await self?.handleAudioRouteChange(notification)
+            }
+        }
+        
+        // Update current device on startup
+        updateCurrentAudioDevice()
     }
     
     /// Handle audio route changes
     private func handleAudioRouteChange(_ notification: Notification) async {
-        guard let userInfo = notification.userInfo,
-              let reasonValue = userInfo[AVAudioSession.routeChangeReasonKey] as? UInt,
-              let reason = AVAudioSession.RouteChangeReason(rawValue: reasonValue) else {
-            return
-        }
-        
-        switch reason {
-        case .newDeviceAvailable:
+        // On macOS, handle device changes differently
+        if notification.name == .AVCaptureDeviceWasConnected {
             // New device connected
             if case .error = recordingState {
                 errorMessage = "Audio device reconnected. Ready to record."
                 await transitionToState(.idle)
             }
-            
-        case .oldDeviceUnavailable:
+            updateCurrentAudioDevice()
+        } else if notification.name == .AVCaptureDeviceWasDisconnected {
             // Device disconnected
             currentAudioDevice = nil
-            
-        default:
-            break
         }
-        
-        // Update current device name
-        let currentRoute = AVAudioSession.sharedInstance().currentRoute
-        currentAudioDevice = currentRoute.inputs.first?.portName
+    }
+    
+    /// Update current audio device name
+    private func updateCurrentAudioDevice() {
+        // On macOS, use AVCaptureDevice
+        let devices = AVCaptureDevice.devices(for: .audio)
+        currentAudioDevice = devices.first(where: { $0.isConnected })?.localizedName
     }
     
     /// Update the ready state based on component status
     private func updateReadyState() {
         isReady = hasMicrophonePermission && 
                   transcriber.isModelLoaded && 
-                  (modelManager.installedModels.contains { $0.name.lowercased().contains(selectedModel.rawValue) } || selectedModel.isEmbedded)
+                  (modelManager.installedModels.contains { $0.type == selectedModel } || selectedModel.isEmbedded)
     }
     
     // MARK: - Public Properties

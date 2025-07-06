@@ -2,7 +2,6 @@ import XCTest
 import AVFoundation
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
-@testable import VoiceType
 
 /// Comprehensive tests for error scenarios and recovery strategies
 final class ErrorScenarioTests: XCTestCase {

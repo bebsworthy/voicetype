@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import VoiceTypeCore
 
 /// Example usage and testing of the text injection system
 public class TextInjectionExample {
@@ -20,9 +21,7 @@ public class TextInjectionExample {
         injectorManager.inject(text: textToInject) { result in
             if result.success {
                 print("✅ Text injected successfully using \(result.method)")
-                if result.fallbackUsed {
-                    print("ℹ️ Fallback method was used")
-                }
+                // Note: fallback information is indicated by the method type
             } else {
                 print("❌ Text injection failed: \(result.error?.localizedDescription ?? "Unknown error")")
             }
@@ -83,9 +82,9 @@ public class TextInjectionExample {
         let context = TextInjectorManager.getCurrentApplicationContext()
         
         print("Current Application Context:")
-        print("- App: \(context.applicationName)")
-        print("- Bundle ID: \(context.bundleIdentifier ?? "Unknown")")
-        print("- Accessible: \(context.isAccessible)")
+        print("- App: \(context.name)")
+        print("- Bundle ID: \(context.bundleIdentifier ?? "None")")
+        print("- Is Running: \(context.isRunning)")
         
         // Check compatibility with different injectors
         let injectors: [TextInjector] = [
@@ -173,8 +172,11 @@ public class TextInjectionPerformance {
             injector.inject(text: "Performance test \(i)") { result in
                 let elapsed = Date().timeIntervalSince(start)
                 totalTime += elapsed
-                if result.success {
+                switch result {
+                case .success:
                     successCount += 1
+                case .failure:
+                    break
                 }
                 semaphore.signal()
             }

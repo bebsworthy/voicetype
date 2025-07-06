@@ -1,5 +1,6 @@
 import XCTest
-@testable import VoiceType
+@testable import VoiceTypeCore
+@testable import VoiceTypeImplementations
 
 /// Tests for the PermissionManager implementation
 final class PermissionManagerTests: XCTestCase {

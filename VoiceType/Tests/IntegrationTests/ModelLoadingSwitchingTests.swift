@@ -1,7 +1,6 @@
 import XCTest
 @testable import VoiceTypeCore
 @testable import VoiceTypeImplementations
-@testable import VoiceType
 
 /// Tests for model loading, switching, and management scenarios
 final class ModelLoadingSwitchingTests: XCTestCase {

@@ -10,6 +10,7 @@ import Combine
 /// - Dynamic updates
 /// - Using presets
 /// - Integration with SwiftUI
+@MainActor
 class HotkeyManagerExample {
     
     private let hotkeyManager = HotkeyManager()
@@ -54,6 +55,7 @@ class HotkeyManagerExample {
             .store(in: &cancellables)
     }
     
+    @MainActor
     private func setupDefaultHotkeys() {
         do {
             // Register toggle recording hotkey
@@ -92,6 +94,7 @@ class HotkeyManagerExample {
     
     // MARK: - Dynamic Updates
     
+    @MainActor
     func updateHotkey() {
         do {
             // Update existing hotkey
@@ -121,6 +124,7 @@ class HotkeyManagerExample {
     
     // MARK: - Conflict Resolution
     
+    @MainActor
     func registerWithConflictHandling(identifier: String, keyCombo: String, action: @escaping () -> Void) {
         do {
             try hotkeyManager.registerHotkey(identifier: identifier, keyCombo: keyCombo, action: action)
@@ -295,9 +299,12 @@ class AppDelegateExample: NSObject, NSApplicationDelegate {
         hotkeyManager = HotkeyManager()
         
         // Register default hotkeys
-        setupHotkeys()
+        Task { @MainActor in
+            setupHotkeys()
+        }
     }
     
+    @MainActor
     private func setupHotkeys() {
         do {
             // Main recording toggle

@@ -1,5 +1,6 @@
 import Foundation
 import AppKit
+import VoiceTypeCore
 
 /// Manages multiple text injection methods with automatic fallback
 public class TextInjectorManager {
@@ -50,7 +51,7 @@ public class TextInjectorManager {
                     method: injector.methodName,
                     fallbackUsed: injectorIndex > 0
                 ))
-            case .failure(let error):
+            case .failure(_):
                 // Try next injector
                 self?.attemptInjection(text: text, injectorIndex: injectorIndex + 1, completion: completion)
             }
@@ -64,8 +65,8 @@ public class TextInjectorManager {
         
         return ApplicationContext(
             bundleIdentifier: frontmostApp?.bundleIdentifier,
-            applicationName: frontmostApp?.localizedName ?? "Unknown",
-            isAccessible: checkAccessibilityPermissions()
+            name: frontmostApp?.localizedName ?? "Unknown",
+            isRunning: frontmostApp != nil
         )
     }
     

@@ -26,3 +26,27 @@ public protocol Transcriber {
     /// - Note: Loading a new model will unload any previously loaded model
     func loadModel(_ type: ModelType) async throws
 }
+
+/// Errors that can occur during transcription
+public enum TranscriberError: LocalizedError {
+    case modelNotLoaded
+    case invalidAudioData
+    case transcriptionFailed(reason: String)
+    case unsupportedLanguage(Language)
+    case modelLoadingFailed(String)
+    
+    public var errorDescription: String? {
+        switch self {
+        case .modelNotLoaded:
+            return "No model is loaded. Please load a model before transcribing."
+        case .invalidAudioData:
+            return "Invalid audio data provided. Ensure audio is 16kHz mono PCM format."
+        case .transcriptionFailed(let reason):
+            return "Transcription failed: \(reason)"
+        case .unsupportedLanguage(let language):
+            return "Language '\(language.displayName)' is not supported by the current model."
+        case .modelLoadingFailed(let error):
+            return "Failed to load model: \(error)"
+        }
+    }
+}

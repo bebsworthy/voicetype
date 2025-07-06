@@ -1,4 +1,5 @@
 import Foundation
+import VoiceTypeCore
 
 /// Mock implementation of Transcriber for testing purposes
 public class MockTranscriber: Transcriber {
@@ -9,6 +10,15 @@ public class MockTranscriber: Transcriber {
         case failure(TranscriberError)
         case delayed(text: String, delay: TimeInterval)
         case sequence([MockBehavior])
+        
+        var shouldFailModelLoading: Bool {
+            switch self {
+            case .failure(.modelLoadingFailed):
+                return true
+            default:
+                return false
+            }
+        }
     }
     
     // MARK: - Properties
@@ -18,13 +28,28 @@ public class MockTranscriber: Transcriber {
     private let queue = DispatchQueue(label: "com.voicetype.mock.transcriber")
     
     public var isReady: Bool = true
-    public var selectedLanguage: TranscriptionLanguage = .english
-    public var supportedLanguages: [TranscriptionLanguage] = TranscriptionLanguage.allCases
+    public var selectedLanguage: Language = .english
+    public var supportedLanguages: [Language] = Language.allCases
     
     // Tracking for testing
     public private(set) var transcribeCallCount = 0
     public private(set) var lastAudioDataSize: Int?
     public private(set) var transcriptionHistory: [TranscriptionResult] = []
+    
+    public var modelInfo: ModelInfo {
+        ModelInfo(
+            type: .fast,
+            version: "1.0-mock",
+            path: URL(fileURLWithPath: "/mock/path"),
+            sizeInBytes: 0,
+            isLoaded: isReady,
+            lastUsed: Date()
+        )
+    }
+    
+    public var isModelLoaded: Bool {
+        return isReady
+    }
     
     // MARK: - Initialization
     
@@ -61,7 +86,8 @@ public class MockTranscriber: Transcriber {
     
     // MARK: - Transcriber Protocol
     
-    public func transcribe(_ audioData: Data) async throws -> TranscriptionResult {
+    public func transcribe(_ audio: AudioData, language: Language?) async throws -> TranscriptionResult {
+        let audioData = Data(audio.samples.flatMap { [$0].withUnsafeBytes { Data($0) } })
         return try await withCheckedThrowingContinuation { continuation in
             queue.async { [weak self] in
                 guard let self = self else {
@@ -99,19 +125,27 @@ public class MockTranscriber: Transcriber {
         }
     }
     
+    public func loadModel(_ type: ModelType) async throws {
+        // Simulate model loading
+        isReady = true
+    }
+    
     // MARK: - Private Methods
     
     private func processBehavior(_ behavior: MockBehavior, audioData: Data, completion: @escaping (Result<TranscriptionResult, Error>) -> Void) {
         switch behavior {
         case .success(let text, let confidence):
+            let segment = TranscriptionSegment(
+                text: text,
+                startTime: 0.0,
+                endTime: 1.0,
+                confidence: confidence
+            )
             let result = TranscriptionResult(
                 text: text,
                 confidence: confidence,
-                language: selectedLanguage,
-                metadata: [
-                    "mock": true,
-                    "audioDataSize": audioData.count
-                ]
+                segments: [segment],
+                language: selectedLanguage
             )
             completion(.success(result))
             
@@ -125,15 +159,17 @@ public class MockTranscriber: Transcriber {
                     return
                 }
                 
+                let segment = TranscriptionSegment(
+                    text: text,
+                    startTime: 0.0,
+                    endTime: delay,
+                    confidence: 0.9
+                )
                 let result = TranscriptionResult(
                     text: text,
                     confidence: 0.9,
-                    language: self.selectedLanguage,
-                    metadata: [
-                        "mock": true,
-                        "delayed": true,
-                        "delay": delay
-                    ]
+                    segments: [segment],
+                    language: self.selectedLanguage
                 )
                 completion(.success(result))
             }
@@ -162,13 +198,13 @@ public extension MockTranscriber {
         public static let lowConfidence = MockBehavior.success(text: "Not sure about this...", confidence: 0.45)
         
         /// Model not loaded error
-        public static let notLoaded = MockBehavior.failure(.modelNotLoaded)
+        public static let notLoaded = MockBehavior.failure(TranscriberError.modelNotLoaded)
         
         /// Invalid audio data error
-        public static let invalidAudio = MockBehavior.failure(.invalidAudioData)
+        public static let invalidAudio = MockBehavior.failure(TranscriberError.invalidAudioData)
         
         /// Generic transcription failure
-        public static let failed = MockBehavior.failure(.transcriptionFailed(reason: "Mock failure"))
+        public static let failed = MockBehavior.failure(TranscriberError.transcriptionFailed(reason: "Mock failure"))
         
         /// Slow response (2 seconds)
         public static let slow = MockBehavior.delayed(text: "This took a while...", delay: 2.0)
@@ -176,7 +212,7 @@ public extension MockTranscriber {
         /// Alternating success and failure
         public static let alternating = MockBehavior.sequence([
             .success(text: "First transcription", confidence: 0.95),
-            .failure(.transcriptionFailed(reason: "Network error")),
+            .failure(TranscriberError.transcriptionFailed(reason: "Network error")),
             .success(text: "Third transcription", confidence: 0.92)
         ])
         

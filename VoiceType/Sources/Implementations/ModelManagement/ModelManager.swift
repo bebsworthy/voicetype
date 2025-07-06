@@ -8,6 +8,7 @@
 import Foundation
 import Combine
 import CoreML
+import VoiceTypeCore
 
 /// Coordinates model downloading, installation, and lifecycle management
 @MainActor
@@ -74,10 +75,24 @@ public final class ModelManager: ObservableObject {
     
     // MARK: - Initialization
     
-    public override init() {
-        super.init()
+    public init() {
         Task {
             await refreshInstalledModels()
+        }
+    }
+    
+    // MARK: - Helper Methods
+    
+    private func modelTypeFromString(_ type: String) -> ModelType {
+        switch type.lowercased() {
+        case "fast", "tiny":
+            return .fast
+        case "balanced", "base":
+            return .balanced
+        case "accurate", "small":
+            return .accurate
+        default:
+            return .fast
         }
     }
     
@@ -89,7 +104,17 @@ public final class ModelManager: ObservableObject {
         defer { isRefreshing = false }
         
         do {
-            installedModels = try fileManager.installedModels()
+            let fileInfos = try fileManager.installedModels()
+            installedModels = fileInfos.map { fileInfo in
+                ModelInfo(
+                    type: modelTypeFromString(fileInfo.name),
+                    version: fileInfo.version,
+                    path: fileInfo.path,
+                    sizeInBytes: fileInfo.size,
+                    isLoaded: false, // Would need to check with transcriber
+                    lastUsed: fileInfo.lastAccessDate
+                )
+            }
         } catch {
             print("Failed to load installed models: \(error)")
             installedModels = []
@@ -237,13 +262,12 @@ public final class ModelManager: ObservableObject {
         
         // Save metadata
         let metadata = ModelInfo(
-            name: configuration.name,
+            type: modelTypeFromString(configuration.name),
             version: configuration.version,
             path: destinationPath,
-            size: configuration.estimatedSize,
-            creationDate: Date(),
-            lastAccessDate: Date(),
-            checksum: configuration.checksum
+            sizeInBytes: configuration.estimatedSize,
+            isLoaded: false,
+            lastUsed: Date()
         )
         
         let metadataURL = destinationPath.appendingPathComponent("metadata.json")

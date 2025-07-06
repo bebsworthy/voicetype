@@ -99,11 +99,17 @@ build_project() {
     
     # Copy executable to build directory
     local BUILD_CONFIG_DIR=".build/$config"
+    local XCODE_BUILD_DIR=".build/apple/Products/Debug"
+    
+    # Check both locations for the executable
     if [[ -f "$BUILD_CONFIG_DIR/$PROJECT_NAME" ]]; then
         cp "$BUILD_CONFIG_DIR/$PROJECT_NAME" "$BUILD_DIR/"
         log_info "Executable copied to $BUILD_DIR/$PROJECT_NAME"
+    elif [[ -f "$XCODE_BUILD_DIR/$PROJECT_NAME" ]]; then
+        cp "$XCODE_BUILD_DIR/$PROJECT_NAME" "$BUILD_DIR/"
+        log_info "Executable copied to $BUILD_DIR/$PROJECT_NAME (from Xcode build)"
     else
-        log_error "Executable not found at $BUILD_CONFIG_DIR/$PROJECT_NAME"
+        log_error "Executable not found at $BUILD_CONFIG_DIR/$PROJECT_NAME or $XCODE_BUILD_DIR/$PROJECT_NAME"
         exit 1
     fi
 }

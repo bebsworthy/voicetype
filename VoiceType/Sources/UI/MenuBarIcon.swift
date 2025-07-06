@@ -1,5 +1,7 @@
 import SwiftUI
 import AppKit
+import VoiceTypeCore
+import VoiceTypeImplementations
 
 /// Dynamic menu bar icon that changes based on recording state
 public struct MenuBarIcon: View {
@@ -164,6 +166,7 @@ public struct RecordingIndicator: View {
 // MARK: - Menu Bar Status Item Helper
 
 /// Helper class for managing the menu bar status item
+@MainActor
 public class MenuBarStatusItem: ObservableObject {
     private var statusItem: NSStatusItem?
     private var coordinator: VoiceTypeCoordinator
@@ -179,8 +182,8 @@ public class MenuBarStatusItem: ObservableObject {
         
         // Set accessibility
         statusItem?.button?.toolTip = "VoiceType - Click to show menu"
-        statusItem?.button?.accessibilityLabel = "VoiceType"
-        statusItem?.button?.accessibilityRole = .menuButton
+        statusItem?.button?.setAccessibilityLabel("VoiceType")
+        statusItem?.button?.setAccessibilityRole(.menuButton)
     }
     
     public func updateIcon() {
@@ -193,7 +196,7 @@ public class MenuBarStatusItem: ObservableObject {
         )
         
         // Update accessibility description
-        button.accessibilityValue = coordinator.recordingState.description
+        button.setAccessibilityValue(coordinator.recordingState.description)
     }
     
     public func setMenu(_ menu: NSMenu) {

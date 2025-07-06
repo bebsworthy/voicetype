@@ -7,6 +7,7 @@
 
 import Foundation
 import AVFoundation
+import VoiceTypeCore
 
 /// Mock audio processor for testing purposes
 public final class MockAudioProcessor: AudioProcessor {
@@ -26,6 +27,20 @@ public final class MockAudioProcessor: AudioProcessor {
     
     public var recordingState: RecordingState {
         stateQueue.sync { _recordingState }
+    }
+    
+    // MARK: - Protocol Conformance
+    
+    public var isRecording: Bool {
+        stateQueue.sync { _recordingState == .recording }
+    }
+    
+    public var audioLevelChanged: AsyncStream<Float> {
+        audioLevelPublisher
+    }
+    
+    public var recordingStateChanged: AsyncStream<RecordingState> {
+        recordingStatePublisher
     }
     
     // Mock control properties
@@ -68,33 +83,37 @@ public final class MockAudioProcessor: AudioProcessor {
     
     // MARK: - AudioProcessor Protocol
     
-    public func startRecording(maxDuration: TimeInterval = 5.0, completion: @escaping (Result<AudioData, AudioProcessorError>) -> Void) async throws {
+    public func startRecording() async throws {
+        try await startRecordingInternal(maxDuration: 5.0)
+    }
+    
+    private func startRecordingInternal(maxDuration: TimeInterval = 5.0) async throws {
         // Check state
         guard recordingState == .idle else {
-            throw AudioProcessorError.recordingFailed(NSError(domain: "VoiceType", code: -1, userInfo: [NSLocalizedDescriptionKey: "Recording already in progress"]))
+            throw AudioProcessorError.systemError("Recording already in progress")
         }
         
         // Check mock permission
         guard mockPermissionStatus == .authorized else {
             if mockPermissionStatus == .denied {
-                throw AudioProcessorError.microphoneAccessDenied
+                throw AudioProcessorError.permissionDenied
             } else if mockPermissionStatus == .restricted {
-                throw AudioProcessorError.microphoneAccessRestricted
+                throw AudioProcessorError.permissionDenied
             } else {
-                throw AudioProcessorError.microphoneAccessDenied
+                throw AudioProcessorError.permissionDenied
             }
         }
         
         // Simulate failure to start
         if shouldFailToStart {
             let error = NSError(domain: "VoiceType", code: -100, userInfo: [NSLocalizedDescriptionKey: "Mock audio engine start failure"])
-            updateRecordingState(.error(.audioEngineStartFailed(error)))
-            throw AudioProcessorError.audioEngineStartFailed(error)
+            updateRecordingState(.error("Mock audio engine start failure"))
+            throw AudioProcessorError.systemError("Audio engine start failed: \(error.localizedDescription)")
         }
         
         // Start recording
         updateRecordingState(.recording)
-        recordingCompletion = completion
+        // Recording started
         
         // Start timers
         startRecordingTimer(duration: min(maxDuration, 5.0))
@@ -122,10 +141,13 @@ public final class MockAudioProcessor: AudioProcessor {
         }
     }
     
-    public func stopRecording() {
-        guard recordingState == .recording else { return }
+    public func stopRecording() async -> AudioData {
+        guard recordingState == .recording else {
+            return mockAudioData ?? generateDefaultAudioData()
+        }
         
         stopRecordingInternal(success: true)
+        return mockAudioData ?? generateDefaultAudioData()
     }
     
     public func requestMicrophonePermission() async -> Bool {
@@ -182,7 +204,8 @@ public final class MockAudioProcessor: AudioProcessor {
         mockAudioData = AudioData(
             samples: samples,
             sampleRate: configuration.sampleRate,
-            channelCount: configuration.channelCount
+            channelCount: configuration.channelCount,
+            timestamp: Date()
         )
     }
     
@@ -203,6 +226,13 @@ public final class MockAudioProcessor: AudioProcessor {
     private func generateDefaultMockData() {
         // Generate 2 seconds of test audio
         generateSyntheticAudioData(duration: 2.0, frequency: 440.0)
+    }
+    
+    private func generateDefaultAudioData() -> AudioData {
+        if mockAudioData == nil {
+            generateDefaultMockData()
+        }
+        return mockAudioData!
     }
     
     private func updateRecordingState(_ newState: RecordingState) {
@@ -235,7 +265,7 @@ public final class MockAudioProcessor: AudioProcessor {
     }
     
     private func stopRecordingInternal(success: Bool) {
-        updateRecordingState(.stopping)
+        updateRecordingState(.processing)
         
         recordingTimer?.invalidate()
         recordingTimer = nil
@@ -245,7 +275,7 @@ public final class MockAudioProcessor: AudioProcessor {
         if success, let audioData = mockAudioData {
             recordingCompletion?(.success(audioData))
         } else {
-            recordingCompletion?(.failure(.recordingFailed(NSError(domain: "VoiceType", code: -1, userInfo: [NSLocalizedDescriptionKey: "Mock recording failed"]))))
+            recordingCompletion?(.failure(.systemError("Mock recording failed")))
         }
         
         updateRecordingState(.idle)
@@ -255,8 +285,8 @@ public final class MockAudioProcessor: AudioProcessor {
     private func simulateDeviceDisconnected() {
         guard recordingState == .recording else { return }
         
-        updateRecordingState(.error(.audioDeviceNotAvailable))
-        recordingCompletion?(.failure(.audioDeviceNotAvailable))
+        updateRecordingState(.error("Audio device not available"))
+        recordingCompletion?(.failure(.deviceDisconnected))
         stopRecordingInternal(success: false)
     }
     
@@ -264,8 +294,8 @@ public final class MockAudioProcessor: AudioProcessor {
         guard recordingState == .recording else { return }
         
         mockPermissionStatus = .denied
-        updateRecordingState(.error(.permissionRevoked))
-        recordingCompletion?(.failure(.permissionRevoked))
+        updateRecordingState(.error("Permission revoked"))
+        recordingCompletion?(.failure(.permissionDenied))
         stopRecordingInternal(success: false)
     }
     
@@ -273,8 +303,8 @@ public final class MockAudioProcessor: AudioProcessor {
         guard recordingState == .recording else { return }
         
         let error = NSError(domain: "VoiceType", code: -200, userInfo: [NSLocalizedDescriptionKey: "Simulated recording failure"])
-        updateRecordingState(.error(.recordingFailed(error)))
-        recordingCompletion?(.failure(.recordingFailed(error)))
+        updateRecordingState(.error("Recording failed: \(error.localizedDescription)"))
+        recordingCompletion?(.failure(.systemError(error.localizedDescription)))
         stopRecordingInternal(success: false)
     }
 }
@@ -350,7 +380,8 @@ public extension MockAudioProcessor {
         mockAudioData = AudioData(
             samples: samples,
             sampleRate: configuration.sampleRate,
-            channelCount: configuration.channelCount
+            channelCount: configuration.channelCount,
+            timestamp: Date()
         )
     }
 }
