@@ -67,12 +67,17 @@ public class HotkeyManager: ObservableObject {
     /// - Throws: HotkeyError if registration fails
     @MainActor
     public func registerHotkey(identifier: String, keyCombo: String, action: @escaping () -> Void) throws {
-        // Parse the key combination
+        // Parse the key combination first
         guard let parsedHotkey = parseKeyCombo(keyCombo) else {
             throw HotkeyError.invalidKeyCombo(keyCombo)
         }
         
-        // Check for conflicts
+        // Check if it has modifiers
+        if parsedHotkey.modifiers.isEmpty {
+            throw HotkeyError.invalidKeyCombo(keyCombo)
+        }
+        
+        // Check for conflicts excluding this identifier (in case of update)
         if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
             throw HotkeyError.conflictingHotkey(identifier: conflict.identifier, keyCombo: keyCombo)
         }
@@ -201,9 +206,9 @@ public class HotkeyManager: ObservableObject {
         let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
         
         if !trusted {
-            DispatchQueue.main.async {
-                self.lastError = .accessibilityPermissionRequired
-                self.isActive = false
+            DispatchQueue.main.async { [weak self] in
+                self?.lastError = .accessibilityPermissionRequired
+                self?.isActive = false
             }
             return
         }
@@ -213,8 +218,8 @@ public class HotkeyManager: ObservableObject {
             self?.handleKeyEvent(event)
         }
         
-        DispatchQueue.main.async {
-            self.isActive = true
+        DispatchQueue.main.async { [weak self] in
+            self?.isActive = true
         }
     }
     
@@ -224,8 +229,8 @@ public class HotkeyManager: ObservableObject {
             eventMonitor = nil
         }
         
-        DispatchQueue.main.async {
-            self.isActive = false
+        DispatchQueue.main.async { [weak self] in
+            self?.isActive = false
         }
     }
     
@@ -248,11 +253,20 @@ public class HotkeyManager: ObservableObject {
     }
     
     private func parseKeyCombo(_ combo: String) -> (keyCode: Int, modifiers: NSEvent.ModifierFlags)? {
-        let parts = combo.lowercased().split(separator: "+").map { String($0).trimmingCharacters(in: .whitespaces) }
+        let trimmedCombo = combo.trimmingCharacters(in: .whitespaces)
+        guard !trimmedCombo.isEmpty else { return nil }
+        
+        // Check for invalid formats
+        if trimmedCombo.hasPrefix("+") || trimmedCombo.hasSuffix("+") || trimmedCombo.contains("++") {
+            return nil
+        }
+        
+        let parts = trimmedCombo.lowercased().split(separator: "+").map { String($0).trimmingCharacters(in: .whitespaces) }
         guard !parts.isEmpty else { return nil }
         
         var modifiers: NSEvent.ModifierFlags = []
         var keyPart: String?
+        let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift", "fn", "function"])
         
         for part in parts {
             switch part {
@@ -267,7 +281,20 @@ public class HotkeyManager: ObservableObject {
             case "fn", "function":
                 modifiers.insert(.function)
             default:
-                keyPart = part
+                if keyPart == nil {
+                    keyPart = part
+                } else {
+                    // Multiple non-modifier parts - invalid
+                    return nil
+                }
+            }
+        }
+        
+        // Check if all parts except the key part are valid modifiers
+        for part in parts {
+            if part != keyPart && !validModifiers.contains(part) {
+                // Invalid modifier found
+                return nil
             }
         }
         

@@ -9,6 +9,12 @@ final class PermissionManagerTests: XCTestCase {
     
     override func setUp() {
         super.setUp()
+        // Clear any persisted permission states to ensure clean test environment
+        UserDefaults.standard.removeObject(forKey: "VoiceType.MicrophonePermissionState")
+        UserDefaults.standard.removeObject(forKey: "VoiceType.AccessibilityPermissionState")
+        UserDefaults.standard.removeObject(forKey: "VoiceType.LastPermissionCheckDate")
+        UserDefaults.standard.synchronize()
+        
         permissionManager = PermissionManager()
     }
     
@@ -78,20 +84,57 @@ final class PermissionManagerTests: XCTestCase {
     // MARK: - Permission Summary Tests
     
     func testPermissionSummaryNeedsAttention() {
+        // Wait a moment for initial permission checks to complete
+        let expectation = XCTestExpectation(description: "Initial check complete")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+        
         let summary = permissionManager.permissionSummary
         
-        // Initially, both permissions should need attention
+        // Check if permissions need attention based on current state
         let needingAttention = summary.permissionsNeedingAttention
-        XCTAssertTrue(needingAttention.contains(.microphone))
-        XCTAssertTrue(needingAttention.contains(.accessibility))
+        
+        // The test should verify the logic, not assume initial state
+        // If microphone is not granted, it should be in needingAttention
+        if summary.microphone != .granted {
+            XCTAssertTrue(needingAttention.contains(.microphone))
+        }
+        
+        // If accessibility is not granted, it should be in needingAttention  
+        if summary.accessibility != .granted {
+            XCTAssertTrue(needingAttention.contains(.accessibility))
+        }
+        
+        // Verify the array contains the correct permissions
+        XCTAssertEqual(needingAttention.count, 
+                      (summary.microphone != .granted ? 1 : 0) + 
+                      (summary.accessibility != .granted ? 1 : 0))
     }
     
     func testPermissionSummaryFunctionality() {
+        // Wait a moment for initial permission checks to complete
+        let expectation = XCTestExpectation(description: "Initial check complete")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+        
         let summary = permissionManager.permissionSummary
         
-        // Initially, the app cannot function at all
-        XCTAssertFalse(summary.canFunctionMinimally)
-        XCTAssertFalse(summary.canFunctionFully)
+        // Test the logic based on current permission state
+        // canFunctionMinimally requires microphone permission
+        XCTAssertEqual(summary.canFunctionMinimally, summary.microphone == .granted)
+        
+        // canFunctionFully requires all permissions
+        XCTAssertEqual(summary.canFunctionFully, summary.allGranted)
+        
+        // If we have microphone but not accessibility, we can function minimally but not fully
+        if summary.microphone == .granted && summary.accessibility != .granted {
+            XCTAssertTrue(summary.canFunctionMinimally)
+            XCTAssertFalse(summary.canFunctionFully)
+        }
     }
     
     // MARK: - Refresh Tests

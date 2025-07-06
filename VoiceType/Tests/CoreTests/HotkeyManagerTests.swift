@@ -307,9 +307,16 @@ class HotkeyManagerTests: XCTestCase {
             do {
                 // Register 100 hotkeys
                 for i in 0..<100 {
+                    // Use unique key combinations to avoid conflicts
+                    let modifiers = ["cmd", "cmd+shift", "cmd+opt", "cmd+shift+opt", "ctrl+shift"]
+                    let keys = ["a", "b", "c", "d", "e", "f", "g", "h", "j", "k", "l", "m", "n", "p", "q", "r", "s", "t", "v", "w", "x", "y", "z", "1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+                    
+                    let modifierIndex = i % modifiers.count
+                    let keyIndex = (i / modifiers.count) % keys.count
+                    
                     try hotkeyManager.registerHotkey(
                         identifier: "perf.test.\(i)",
-                        keyCombo: "cmd+shift+f\(i % 12 + 1)",
+                        keyCombo: "\(modifiers[modifierIndex])+\(keys[keyIndex])",
                         action: {}
                     )
                 }
