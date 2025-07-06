@@ -1,0 +1,17 @@
+// Re-export all text injection components for easy access
+
+@_exported import struct VoiceTypeCore.ApplicationContext
+@_exported import struct VoiceTypeCore.InjectionResult
+@_exported import enum VoiceTypeCore.TextInjectionError
+@_exported import protocol VoiceTypeCore.TextInjector
+@_exported import class VoiceTypeCore.TextInjectorManager
+
+// Export all implementations
+public typealias AccessibilityInjector = VoiceTypeImplementations.AccessibilityInjector
+public typealias ClipboardInjector = VoiceTypeImplementations.ClipboardInjector
+public typealias SmartClipboardInjector = VoiceTypeImplementations.SmartClipboardInjector
+public typealias AppSpecificInjector = VoiceTypeImplementations.AppSpecificInjector
+public typealias MockTextInjector = VoiceTypeImplementations.MockTextInjector
+public typealias ConfigurableMockInjector = VoiceTypeImplementations.ConfigurableMockInjector
+public typealias TextInjectorFactory = VoiceTypeImplementations.TextInjectorFactory
+public typealias TextInjectionConfiguration = VoiceTypeImplementations.TextInjectionConfiguration

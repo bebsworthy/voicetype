@@ -1,0 +1,76 @@
+{
+  "configurations" : [
+    {
+      "id" : "DEFAULT",
+      "name" : "Default Performance Tests",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "VOICETYPE_TEST_MODE",
+            "value" : "PERFORMANCE"
+          }
+        ],
+        "testExecutionOrdering" : "random",
+        "testTimeoutsEnabled" : true,
+        "maximumTestExecutionTimeAllowance" : 300
+      }
+    },
+    {
+      "id" : "STRESS",
+      "name" : "Stress Tests",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "VOICETYPE_TEST_MODE",
+            "value" : "STRESS"
+          },
+          {
+            "key" : "VOICETYPE_STRESS_MULTIPLIER",
+            "value" : "10"
+          }
+        ],
+        "testTimeoutsEnabled" : true,
+        "maximumTestExecutionTimeAllowance" : 600
+      }
+    },
+    {
+      "id" : "BASELINE",
+      "name" : "Baseline Generation",
+      "options" : {
+        "environmentVariableEntries" : [
+          {
+            "key" : "VOICETYPE_TEST_MODE",
+            "value" : "BASELINE"
+          },
+          {
+            "key" : "VOICETYPE_SAVE_BASELINES",
+            "value" : "true"
+          }
+        ],
+        "testRepetitionMode" : "fixedIterations",
+        "testRepetitionFixedIterationCount" : 10
+      }
+    }
+  ],
+  "defaultOptions" : {
+    "codeCoverage" : false,
+    "testExecutionOrdering" : "alphabetical"
+  },
+  "testTargets" : [
+    {
+      "target" : {
+        "containerPath" : "container:VoiceType.xcodeproj",
+        "identifier" : "PerformanceTests",
+        "name" : "PerformanceTests"
+      },
+      "selectedTests" : [
+        "MemoryUsageTests",
+        "LatencyMeasurementTests",
+        "ModelLoadingPerformanceTests",
+        "AudioProcessingEfficiencyTests",
+        "PerformanceBenchmarkingTests"
+      ]
+    }
+  ],
+  "version" : 1
+}

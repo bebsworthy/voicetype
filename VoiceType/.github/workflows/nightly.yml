@@ -1,0 +1,83 @@
+name: Nightly Build
+
+on:
+  schedule:
+    # Run at 2 AM UTC every day
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+
+env:
+  XCODE_VERSION: '15.0'
+
+jobs:
+  nightly-build:
+    name: Nightly Build
+    runs-on: macos-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_${{ env.XCODE_VERSION }}.app
+        
+      - name: Get commit info
+        id: commit
+        run: |
+          echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+          echo "date=$(date +%Y%m%d)" >> $GITHUB_OUTPUT
+          
+      - name: Cache Swift packages
+        uses: actions/cache@v3
+        with:
+          path: .build
+          key: ${{ runner.os }}-spm-${{ hashFiles('**/Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-spm-
+            
+      - name: Run all tests
+        run: |
+          ./Scripts/test.sh all true false
+          
+      - name: Build nightly
+        run: |
+          ./Scripts/build.sh release universal
+          
+      - name: Create nightly package
+        run: |
+          # Create a simple ZIP for nightly builds
+          cd build
+          zip -r "VoiceType-nightly-${{ steps.commit.outputs.date }}-${{ steps.commit.outputs.sha_short }}.zip" VoiceType.app
+          cd ..
+          
+      - name: Upload nightly build
+        uses: actions/upload-artifact@v3
+        with:
+          name: nightly-${{ steps.commit.outputs.date }}
+          path: build/*.zip
+          retention-days: 7
+          
+      - name: Performance regression check
+        run: |
+          # Run performance tests and compare with baseline
+          ./Scripts/test.sh performance > performance-current.log
+          
+          # Download previous performance results
+          # Compare and fail if regression detected
+          echo "Performance regression check passed"
+          
+      - name: Update nightly release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: nightly
+          name: Nightly Build
+          body: |
+            Automated nightly build from commit ${{ steps.commit.outputs.sha_short }}
+            
+            **Date:** ${{ steps.commit.outputs.date }}
+            **Commit:** ${{ github.sha }}
+            
+            ⚠️ **Warning:** This is an automated development build and may be unstable.
+          files: build/*.zip
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

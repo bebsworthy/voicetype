@@ -1,0 +1,6 @@
+import Foundation
+
+// Placeholder main file for VoiceType executable
+// This will be replaced with the actual SwiftUI app in Phase 3
+print("VoiceType - Voice to Text for macOS")
+print("Core protocols and data structures have been implemented.")
