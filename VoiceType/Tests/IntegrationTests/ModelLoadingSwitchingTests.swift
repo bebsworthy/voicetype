@@ -8,10 +8,10 @@ final class ModelLoadingSwitchingTests: XCTestCase {
     // MARK: - Properties
     
     var modelManager: ModelManager!
+    var coordinator: VoiceTypeCoordinator!
+    var mockTranscriber: ModelLoadingMockTranscriber!
     var mockDownloader: MockModelDownloader!
     var mockFileManager: MockFileManagerExtension!
-    var coordinator: VoiceTypeCoordinator!
-    var mockTranscriber: MockTranscriber!
     
     // MARK: - Setup & Teardown
     
@@ -19,27 +19,30 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         try await super.setUp()
         
         // Create mock components
+        mockTranscriber = ModelLoadingMockTranscriber()
         mockDownloader = MockModelDownloader()
         mockFileManager = MockFileManagerExtension()
-        mockTranscriber = MockTranscriber()
         
-        // Create model manager with mocks
-        modelManager = ModelManager()
-        // Note: In real implementation, we'd inject the downloader and file manager
+        // Create model manager
+        modelManager = await ModelManager()
         
         // Create coordinator with mock transcriber
         coordinator = await VoiceTypeCoordinator(
+            audioProcessor: MockAudioProcessor(),
             transcriber: mockTranscriber,
+            textInjector: MockTextInjector(),
+            permissionManager: nil,
+            hotkeyManager: nil,
             modelManager: modelManager
         )
     }
     
     override func tearDown() async throws {
         modelManager = nil
-        mockDownloader = nil
-        mockFileManager = nil
         coordinator = nil
         mockTranscriber = nil
+        mockDownloader = nil
+        mockFileManager = nil
         try await super.tearDown()
     }
     
@@ -51,12 +54,14 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         
         // When: Load model
         mockTranscriber.setReady(true) // Simulate successful loading
-        await coordinator.changeModel(.tiny)
+        await coordinator.changeModel(.fast)
         
         // Then: Model should be loaded
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        XCTAssertTrue(coordinator.isReady)
-        XCTAssertNil(coordinator.errorMessage)
+        let isReady = await coordinator.isReady
+        XCTAssertTrue(isReady)
+        let errorMessage = await coordinator.errorMessage
+        XCTAssertNil(errorMessage)
     }
     
     func testModelLoadingFailure() async throws {
@@ -64,12 +69,14 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         mockTranscriber.shouldFailModelLoading = true
         
         // When: Try to load model
-        await coordinator.changeModel(.base)
+        await coordinator.changeModel(.balanced)
         
         // Then: Should show error and fallback to fast model
         try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-        XCTAssertEqual(coordinator.selectedModel, .fast)
-        XCTAssertNotNil(coordinator.errorMessage)
+        let selectedModel = await coordinator.selectedModel
+        XCTAssertEqual(selectedModel, .fast)
+        let errorMessage = await coordinator.errorMessage
+        XCTAssertNotNil(errorMessage)
     }
     
     func testModelDownloadSimulation() async throws {
@@ -106,31 +113,36 @@ final class ModelLoadingSwitchingTests: XCTestCase {
     
     func testModelSwitchingDuringIdle() async throws {
         // Given: App is idle
-        XCTAssertEqual(coordinator.recordingState, .idle)
+        let recordingState = await coordinator.recordingState
+        XCTAssertEqual(recordingState, .idle)
         
         // When: Switch models
-        await coordinator.changeModel(.tiny)
+        await coordinator.changeModel(.fast)
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        await coordinator.changeModel(.base)
+        await coordinator.changeModel(.balanced)
         try await Task.sleep(nanoseconds: 100_000_000) // 100ms
-        await coordinator.changeModel(.small)
+        await coordinator.changeModel(.accurate)
         
         // Then: Should successfully switch
-        XCTAssertEqual(coordinator.selectedModel, .small)
+        let selectedModel = await coordinator.selectedModel
+        XCTAssertEqual(selectedModel, .accurate)
     }
     
     func testModelSwitchingDuringRecording() async throws {
         // Given: Recording is in progress
         await coordinator.startDictation()
-        XCTAssertEqual(coordinator.recordingState, .recording)
+        let recordingState = await coordinator.recordingState
+        XCTAssertEqual(recordingState, .recording)
         
         // When: Try to switch model
-        await coordinator.changeModel(.base)
+        await coordinator.changeModel(.balanced)
         
         // Then: Should not switch model
-        XCTAssertNotEqual(coordinator.selectedModel, .base)
-        XCTAssertNotNil(coordinator.errorMessage)
-        XCTAssertTrue(coordinator.errorMessage?.contains("Cannot change model") ?? false)
+        let selectedModel = await coordinator.selectedModel
+        XCTAssertNotEqual(selectedModel, .balanced)
+        let errorMessage = await coordinator.errorMessage
+        XCTAssertNotNil(errorMessage)
+        XCTAssertTrue(errorMessage?.contains("Cannot change model") ?? false)
     }
     
     func testModelSwitchingWithMemoryPressure() async throws {
@@ -138,13 +150,15 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         mockTranscriber.simulateMemoryPressure = true
         
         // When: Try to load large model
-        await coordinator.changeModel(.small)
+        await coordinator.changeModel(.accurate)
         
         // Then: Should handle gracefully
         try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-        if coordinator.selectedModel != .small {
+        let selectedModel = await coordinator.selectedModel
+        if selectedModel != .accurate {
             // Should have fallen back to smaller model
-            XCTAssertEqual(coordinator.selectedModel, .fast)
+            let selectedModel = await coordinator.selectedModel
+        XCTAssertEqual(selectedModel, .fast)
         }
     }
     
@@ -156,12 +170,14 @@ final class ModelLoadingSwitchingTests: XCTestCase {
         
         // When: Try to load corrupted model
         mockTranscriber.shouldFailModelLoading = true
-        await coordinator.changeModel(.base)
+        await coordinator.changeModel(.balanced)
         
         // Then: Should detect corruption and handle
         try await Task.sleep(nanoseconds: 200_000_000) // 200ms
-        XCTAssertNotNil(coordinator.errorMessage)
-        XCTAssertEqual(coordinator.selectedModel, .fast) // Fallback
+        let errorMessage = await coordinator.errorMessage
+        XCTAssertNotNil(errorMessage)
+        let selectedModel = await coordinator.selectedModel
+        XCTAssertEqual(selectedModel, .fast) // Fallback
     }
     
     func testModelChecksumValidation() async throws {
@@ -183,7 +199,7 @@ final class ModelLoadingSwitchingTests: XCTestCase {
     
     func testModelUnloadingOnMemoryWarning() async throws {
         // Given: Multiple models loaded (simulated)
-        mockTranscriber.loadedModels = [.tiny, .base]
+        mockTranscriber.loadedModels = [.fast, .balanced]
         
         // When: Simulate memory pressure
         // Note: macOS doesn't have a direct equivalent to UIApplication.didReceiveMemoryWarningNotification
@@ -200,7 +216,7 @@ final class ModelLoadingSwitchingTests: XCTestCase {
     
     func testSequentialModelLoading() async throws {
         // Given: Need to load models sequentially
-        let models: [ModelType] = [.tiny, .base, .small]
+        let models: [ModelType] = [.fast, .balanced, .accurate]
         
         // When: Load each model
         for model in models {
@@ -211,7 +227,8 @@ final class ModelLoadingSwitchingTests: XCTestCase {
             
             // Then: Only one model should be loaded at a time
             XCTAssertEqual(mockTranscriber.loadedModels.count, 1)
-            XCTAssertEqual(coordinator.selectedModel, model)
+            let selectedModel = await coordinator.selectedModel
+        XCTAssertEqual(selectedModel, model)
         }
     }
     
@@ -272,7 +289,7 @@ final class ModelLoadingSwitchingTests: XCTestCase {
             
             Task {
                 mockTranscriber.setReady(false)
-                await coordinator.changeModel(.base)
+                await coordinator.changeModel(.balanced)
                 mockTranscriber.setReady(true)
                 expectation.fulfill()
             }
@@ -330,22 +347,26 @@ class MockFileManagerExtension {
     }
 }
 
-extension MockTranscriber {
+// Extended mock for model loading tests
+class ModelLoadingMockTranscriber: MockTranscriber {
     var loadedModels: [ModelType] = []
     var shouldFailModelLoading = false
     var simulateMemoryPressure = false
     
-    func loadModel(_ type: ModelType) async throws {
+    override func loadModel(_ type: ModelType) async throws {
         if shouldFailModelLoading {
-            throw TranscriberError.modelLoadingFailed(reason: "Mock failure")
+            throw TranscriberError.modelLoadingFailed("Mock failure")
         }
         
-        if simulateMemoryPressure && type == .small {
-            throw TranscriberError.modelLoadingFailed(reason: "Insufficient memory")
+        if simulateMemoryPressure && type == .accurate {
+            throw TranscriberError.modelLoadingFailed("Insufficient memory")
         }
         
         // Simulate unloading previous model
         loadedModels.removeAll()
         loadedModels.append(type)
+        
+        // Call parent implementation
+        try await super.loadModel(type)
     }
 }

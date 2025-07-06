@@ -31,7 +31,7 @@ public final class TestUtilities {
     
     /// Load test audio file from bundle
     public static func loadTestAudioFile(named fileName: String) -> AudioData? {
-        guard let url = Bundle(for: TestUtilities.self).url(forResource: fileName, withExtension: "wav") else {
+        guard Bundle(for: TestUtilities.self).url(forResource: fileName, withExtension: "wav") != nil else {
             return nil
         }
         
@@ -95,7 +95,7 @@ public final class TestUtilities {
         
         public func report() -> String {
             var report = "Performance Report:\n"
-            for (metric, times) in metrics.sorted(by: { $0.key < $1.key }) {
+            for (metric, _) in metrics.sorted(by: { $0.key < $1.key }) {
                 if let avg = average(for: metric),
                    let p50 = percentile(for: metric, percentile: 50),
                    let p95 = percentile(for: metric, percentile: 95) {
@@ -142,15 +142,11 @@ public final class TestUtilities {
         supportsInput: Bool = true
     ) -> TargetApplication {
         return TargetApplication(
-            bundleIdentifier: bundleId,
+            bundleId: bundleId,
             name: name,
+            processId: pid_t(12345), // Mock process ID
             isActive: true,
-            supportsTextInput: supportsInput,
-            focusedElement: supportsInput ? TargetApplication.FocusedElement(
-                role: "AXTextArea",
-                title: "Main Text Field",
-                value: ""
-            ) : nil
+            bundlePath: URL(fileURLWithPath: "/Applications/\(name).app")
         )
     }
     
@@ -313,7 +309,7 @@ extension XCTestCase {
     /// Assert async operation completes within timeout
     func assertCompletes<T>(
         within timeout: TimeInterval = 5.0,
-        operation: () async throws -> T,
+        operation: @escaping () async throws -> T,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async {
@@ -329,7 +325,7 @@ extension XCTestCase {
     /// Run async operation with timeout
     func withTimeout<T>(
         seconds: TimeInterval,
-        operation: () async throws -> T
+        operation: @escaping () async throws -> T
     ) async throws -> T {
         try await withThrowingTaskGroup(of: T.self) { group in
             group.addTask {

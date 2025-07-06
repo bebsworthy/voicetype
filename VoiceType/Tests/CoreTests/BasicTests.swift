@@ -7,24 +7,23 @@ final class BasicTests: XCTestCase {
         // Test language creation
         let english = Language.english
         XCTAssertEqual(english.code, "en")
-        XCTAssertEqual(english.name, "English")
+        XCTAssertEqual(english.displayName, "English")
         
         let spanish = Language.spanish  
         XCTAssertEqual(spanish.code, "es")
-        XCTAssertEqual(spanish.name, "Spanish")
+        XCTAssertEqual(spanish.displayName, "Spanish")
     }
     
     func testModelType() {
         // Test model types
         let fast = ModelType.fast
-        XCTAssertEqual(fast.displayName, "Fast")
-        XCTAssertEqual(fast.description, "Fastest performance, good accuracy")
+        XCTAssertEqual(fast.displayName, "Fast (Whisper Tiny)")
         
         let balanced = ModelType.balanced
-        XCTAssertEqual(balanced.displayName, "Balanced")
+        XCTAssertEqual(balanced.displayName, "Balanced (Whisper Base)")
         
         let accurate = ModelType.accurate
-        XCTAssertEqual(accurate.displayName, "Accurate")
+        XCTAssertEqual(accurate.displayName, "Accurate (Whisper Small)")
     }
     
     func testRecordingState() {
