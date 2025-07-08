@@ -43,16 +43,7 @@ struct VoiceTypeApp: App {
         .commands {
             // Include standard commands
             CommandGroup(replacing: .appSettings) {
-                Button("Settings...") {
-                    if #available(macOS 14.0, *) {
-                        NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
-                    } else if #available(macOS 13.0, *) {
-                        NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
-                    } else {
-                        NSApp.sendAction(#selector(AppDelegate.showPreferencesWindow(_:)), to: nil, from: nil)
-                    }
-                }
-                .keyboardShortcut(",", modifiers: [.command])
+                SettingsLink()
             }
 
             // Custom commands

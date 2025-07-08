@@ -21,7 +21,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Configure app to be menu bar only (no dock icon)
-        NSApp.setActivationPolicy(.accessory)
+        NSApplication.shared.setActivationPolicy(.accessory)
 
         // Additional setup after app launch
         setupBackgroundTasks()
@@ -66,17 +66,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showSettings() {
-        // Open the Settings window using the appropriate method
-        if #available(macOS 14.0, *) {
-            // For macOS 14+, use the SettingsLink approach
-            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
-        } else if #available(macOS 13.0, *) {
-            // For macOS 13, use showSettingsWindow
-            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
-        } else {
-            // For older versions, use showPreferencesWindow
-            NSApp.sendAction(#selector(AppDelegate.showPreferencesWindow(_:)), to: nil, from: nil)
-        }
+        // Open settings by sending the appropriate action
+        NSApplication.shared.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     // MARK: - Background Tasks

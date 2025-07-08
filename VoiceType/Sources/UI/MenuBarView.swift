@@ -134,64 +134,14 @@ public struct MenuBarView: View {
 
     private var bottomActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            if #available(macOS 14.0, *) {
-                SettingsLink {
-                    HStack {
-                        Image(systemName: "gear")
-                        Text("Settings...")
-                        Spacer()
-                    }
+            SettingsLink {
+                HStack {
+                    Image(systemName: "gear")
+                    Text("Settings...")
+                    Spacer()
                 }
-                .buttonStyle(MenuButtonStyle())
-            } else {
-                Button(action: {
-                    // For older macOS versions, we need to trigger the menu item
-                    if #available(macOS 13.0, *) {
-                        // Try to find and perform the settings menu item
-                        if let menu = NSApplication.shared.mainMenu {
-                            for item in menu.items {
-                                if let submenu = item.submenu {
-                                    for subItem in submenu.items {
-                                        if subItem.action == NSSelectorFromString("showSettingsWindow:") {
-                                            subItem.target?.perform(subItem.action, with: subItem)
-                                            return
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Fallback: send action directly
-                        if let appDelegate = NSApplication.shared.delegate {
-                            appDelegate.perform(NSSelectorFromString("showSettingsWindow:"), with: nil)
-                        }
-                    } else {
-                        // macOS 12 and below
-                        if let menu = NSApplication.shared.mainMenu {
-                            for item in menu.items {
-                                if let submenu = item.submenu {
-                                    for subItem in submenu.items {
-                                        if subItem.action == NSSelectorFromString("showPreferencesWindow:") {
-                                            subItem.target?.perform(subItem.action, with: subItem)
-                                            return
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        // Fallback: send action directly
-                        if let appDelegate = NSApplication.shared.delegate {
-                            appDelegate.perform(NSSelectorFromString("showPreferencesWindow:"), with: nil)
-                        }
-                    }
-                }) {
-                    HStack {
-                        Image(systemName: "gear")
-                        Text("Settings...")
-                        Spacer()
-                    }
-                }
-                .buttonStyle(MenuButtonStyle())
             }
+            .buttonStyle(MenuButtonStyle())
 
             Button(action: {
                 NSApplication.shared.terminate(nil)
