@@ -186,9 +186,9 @@ public class TextInjectionPerformance {
         let successRate = Double(successCount) / Double(iterations) * 100
 
         print("\nPerformance Results for \(injector.methodName):")
-        print("- Average latency: \(String(format: "%.3f", averageTime * 1000))ms")
-        print("- Success rate: \(String(format: "%.1f", successRate))%")
-        print("- Total time: \(String(format: "%.2f", totalTime))s")
+        print("- Average latency: \((averageTime * 1000).formatted(.number.precision(.fractionLength(3))))ms")
+        print("- Success rate: \(successRate.formatted(.number.precision(.fractionLength(1))))%")
+        print("- Total time: \(totalTime.formatted(.number.precision(.fractionLength(2))))s")
     }
 
     /// Compare different injector performance

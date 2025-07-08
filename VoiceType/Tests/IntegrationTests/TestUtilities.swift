@@ -99,9 +99,9 @@ public final class TestUtilities {
                    let p50 = percentile(for: metric, percentile: 50),
                    let p95 = percentile(for: metric, percentile: 95) {
                     report += "\(metric):\n"
-                    report += "  Average: \(String(format: "%.3f", avg))s\n"
-                    report += "  P50: \(String(format: "%.3f", p50))s\n"
-                    report += "  P95: \(String(format: "%.3f", p95))s\n"
+                    report += "  Average: \(avg.formatted(.number.precision(.fractionLength(3))))s\n"
+                    report += "  P50: \(p50.formatted(.number.precision(.fractionLength(3))))s\n"
+                    report += "  P95: \(p95.formatted(.number.precision(.fractionLength(3))))s\n"
                 }
             }
             return report

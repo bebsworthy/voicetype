@@ -16,13 +16,13 @@ final class BasicTests: XCTestCase {
     func testModelType() {
         // Test model types
         let fast = ModelType.fast
-        XCTAssertEqual(fast.displayName, "Fast (Whisper Tiny)")
+        XCTAssertEqual(fast.displayName, "Fast (openai_whisper-tiny)")
 
         let balanced = ModelType.balanced
-        XCTAssertEqual(balanced.displayName, "Balanced (Whisper Base)")
+        XCTAssertEqual(balanced.displayName, "Balanced (openai_whisper-base)")
 
         let accurate = ModelType.accurate
-        XCTAssertEqual(accurate.displayName, "Accurate (Whisper Small)")
+        XCTAssertEqual(accurate.displayName, "Accurate (openai_whisper-small)")
     }
 
     func testRecordingState() {

@@ -121,8 +121,8 @@ class WhisperKitLanguageTests: XCTestCase {
         let avgTime = totalTime / Double(languages.count)
 
         print("Language switching performance:")
-        print("  Total time: \(String(format: "%.3f", totalTime))s")
-        print("  Average per transcription: \(String(format: "%.3f", avgTime))s")
+        print("  Total time: \(totalTime.formatted(.number.precision(.fractionLength(3))))s")
+        print("  Average per transcription: \(avgTime.formatted(.number.precision(.fractionLength(3))))s")
 
         // Switching languages shouldn't significantly impact performance
         XCTAssertLessThan(avgTime, 2.0, "Language switching should not add significant overhead")

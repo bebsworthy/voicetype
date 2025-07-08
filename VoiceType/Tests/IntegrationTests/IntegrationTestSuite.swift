@@ -31,7 +31,7 @@ final class IntegrationTestSuite: XCTestCase {
 
     override func tearDown() {
         let elapsed = Date().timeIntervalSince(testStartTime)
-        print("⏱️  Test completed in \(String(format: "%.3f", elapsed))s")
+        print("⏱️  Test completed in \(elapsed.formatted(.number.precision(.fractionLength(3))))s")
         super.tearDown()
     }
 

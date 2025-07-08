@@ -14,7 +14,7 @@ struct LaunchProgressView: View {
     var body: some View {
         VStack(spacing: 24) {
             // App icon
-            Image(nsImage: NSApp.applicationIconImage)
+            Image(nsImage: NSApplication.shared.applicationIconImage)
                 .resizable()
                 .frame(width: 128, height: 128)
                 .shadow(radius: 10)

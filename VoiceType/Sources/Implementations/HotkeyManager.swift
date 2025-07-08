@@ -1,6 +1,7 @@
 import Foundation
 import AppKit
 import Combine
+import os
 
 /// Manages global hotkeys for the VoiceType application
 ///

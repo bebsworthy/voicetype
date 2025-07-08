@@ -213,7 +213,7 @@ public class AppLifecycleManager: ObservableObject {
 
     private func configureAppSettings() {
         // Configure app-wide settings
-        NSApp.appearance = NSAppearance(named: .aqua)
+        NSApplication.shared.appearance = NSAppearance(named: .aqua)
     }
 
     // MARK: - Private Methods - Settings

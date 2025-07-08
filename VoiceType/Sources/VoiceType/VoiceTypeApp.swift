@@ -2,10 +2,12 @@ import SwiftUI
 import VoiceTypeCore
 import VoiceTypeImplementations
 import VoiceTypeUI
+import os
 
 /// Main VoiceType application
 @main
 struct VoiceTypeApp: App {
+    private let logger = Logger(subsystem: "com.voicetype", category: "VoiceTypeApp")
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var coordinator = VoiceTypeCoordinator()
     @StateObject private var lifecycleManager = AppLifecycleManager()
@@ -87,7 +89,7 @@ struct VoiceTypeApp: App {
 
     private func checkForUpdates() {
         // TODO: Implement update checking
-        print("Checking for updates...")
+        logger.info("Checking for updates...")
     }
 
     // MARK: - App Initialization

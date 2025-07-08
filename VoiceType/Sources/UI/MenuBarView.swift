@@ -148,11 +148,11 @@ public struct MenuBarView: View {
                     // For older macOS versions, we need to trigger the menu item
                     if #available(macOS 13.0, *) {
                         // Try to find and perform the settings menu item
-                        if let menu = NSApp.mainMenu {
+                        if let menu = NSApplication.shared.mainMenu {
                             for item in menu.items {
                                 if let submenu = item.submenu {
                                     for subItem in submenu.items {
-                                        if subItem.action == Selector(("showSettingsWindow:")) {
+                                        if subItem.action == NSSelectorFromString("showSettingsWindow:") {
                                             subItem.target?.perform(subItem.action, with: subItem)
                                             return
                                         }
@@ -161,16 +161,16 @@ public struct MenuBarView: View {
                             }
                         }
                         // Fallback: send action directly
-                        if let appDelegate = NSApp.delegate {
-                            appDelegate.perform(Selector(("showSettingsWindow:")), with: nil)
+                        if let appDelegate = NSApplication.shared.delegate {
+                            appDelegate.perform(NSSelectorFromString("showSettingsWindow:"), with: nil)
                         }
                     } else {
                         // macOS 12 and below
-                        if let menu = NSApp.mainMenu {
+                        if let menu = NSApplication.shared.mainMenu {
                             for item in menu.items {
                                 if let submenu = item.submenu {
                                     for subItem in submenu.items {
-                                        if subItem.action == Selector(("showPreferencesWindow:")) {
+                                        if subItem.action == NSSelectorFromString("showPreferencesWindow:") {
                                             subItem.target?.perform(subItem.action, with: subItem)
                                             return
                                         }
@@ -179,8 +179,8 @@ public struct MenuBarView: View {
                             }
                         }
                         // Fallback: send action directly
-                        if let appDelegate = NSApp.delegate {
-                            appDelegate.perform(Selector(("showPreferencesWindow:")), with: nil)
+                        if let appDelegate = NSApplication.shared.delegate {
+                            appDelegate.perform(NSSelectorFromString("showPreferencesWindow:"), with: nil)
                         }
                     }
                 }) {

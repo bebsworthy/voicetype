@@ -186,7 +186,7 @@ public struct ModelSettingsView: View {
         task.launch()
 
         // Terminate current instance
-        NSApp.terminate(nil)
+        NSApplication.shared.terminate(nil)
     }
 }
 

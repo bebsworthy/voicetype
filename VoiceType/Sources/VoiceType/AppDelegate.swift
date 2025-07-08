@@ -8,6 +8,7 @@
 import Cocoa
 import SwiftUI
 import ServiceManagement
+import os
 
 /// AppDelegate for handling macOS app lifecycle events
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -198,7 +199,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                     try SMAppService.mainApp.unregister()
                 }
             } catch {
-                print("Failed to update login item: \(error)")
+                os_log(.error, "Failed to update login item: %{public}@", error.localizedDescription)
             }
         } else {
             // Fallback for older macOS versions
@@ -223,7 +224,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let scriptObject = NSAppleScript(source: script) {
                 scriptObject.executeAndReturnError(&error)
                 if let error = error {
-                    print("Failed to add login item: \(error)")
+                    os_log(.error, "Failed to add login item: %{public}@", String(describing: error))
                 }
             }
         } else {
@@ -238,7 +239,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             if let scriptObject = NSAppleScript(source: script) {
                 scriptObject.executeAndReturnError(&error)
                 if let error = error {
-                    print("Failed to remove login item: \(error)")
+                    os_log(.error, "Failed to remove login item: %{public}@", String(describing: error))
                 }
             }
         }

@@ -349,7 +349,10 @@ public final class ModelDownloader: NSObject, ObservableObject {
         }
 
         let digest = hasher.finalize()
-        return digest.map { String(format: "%02x", $0) }.joined()
+        return digest.map { byte in
+            let hex = String(byte, radix: 16)
+            return hex.count == 1 ? "0" + hex : hex
+        }.joined()
     }
 }
 
