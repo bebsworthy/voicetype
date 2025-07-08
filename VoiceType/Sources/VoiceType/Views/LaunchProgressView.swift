@@ -10,7 +10,7 @@ import SwiftUI
 /// View shown during app initialization
 struct LaunchProgressView: View {
     @ObservedObject var lifecycleManager: AppLifecycleManager
-    
+
     var body: some View {
         VStack(spacing: 24) {
             // App icon
@@ -18,24 +18,24 @@ struct LaunchProgressView: View {
                 .resizable()
                 .frame(width: 128, height: 128)
                 .shadow(radius: 10)
-            
+
             // App name
             Text("VoiceType")
                 .font(.largeTitle)
                 .fontWeight(.bold)
-            
+
             // Progress section
             VStack(spacing: 16) {
                 // Status text
                 Text(lifecycleManager.initializationState.rawValue)
                     .font(.headline)
                     .foregroundColor(.secondary)
-                
+
                 // Progress bar
                 ProgressView(value: lifecycleManager.initializationProgress)
                     .progressViewStyle(.linear)
                     .frame(width: 300)
-                
+
                 // Additional status details
                 if lifecycleManager.initializationState == .validatingModels {
                     Text("Checking AI models...")
@@ -47,7 +47,7 @@ struct LaunchProgressView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             // Loading indicator
             if lifecycleManager.initializationProgress < 1.0 {
                 ProgressView()
@@ -70,7 +70,7 @@ struct VisualEffectBackground: NSViewRepresentable {
         view.state = .active
         return view
     }
-    
+
     func updateNSView(_ nsView: NSVisualEffectView, context: Context) {}
 }
 

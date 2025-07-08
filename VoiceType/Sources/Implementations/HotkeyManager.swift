@@ -29,36 +29,35 @@ import Combine
 /// hotkeyManager.unregisterHotkey(identifier: "toggleRecording")
 /// ```
 public class HotkeyManager: ObservableObject {
-    
     // MARK: - Published Properties
-    
+
     /// Currently registered hotkeys
     @Published public private(set) var registeredHotkeys: [String: RegisteredHotkey] = [:]
-    
+
     /// Whether the hotkey system is active
     @Published public private(set) var isActive: Bool = false
-    
+
     /// Last error that occurred
     @Published public private(set) var lastError: HotkeyError?
-    
+
     // MARK: - Private Properties
-    
+
     private var eventMonitor: Any?
     private var hotkeys: [String: Hotkey] = [:]
     private let queue = DispatchQueue(label: "com.voicetype.hotkeymanager", qos: .userInteractive)
-    
+
     // MARK: - Initialization
-    
+
     public init() {
         startMonitoring()
     }
-    
+
     deinit {
         stopMonitoring()
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Registers a global hotkey
     /// - Parameters:
     ///   - identifier: Unique identifier for the hotkey
@@ -71,17 +70,17 @@ public class HotkeyManager: ObservableObject {
         guard let parsedHotkey = parseKeyCombo(keyCombo) else {
             throw HotkeyError.invalidKeyCombo(keyCombo)
         }
-        
+
         // Check if it has modifiers
         if parsedHotkey.modifiers.isEmpty {
             throw HotkeyError.invalidKeyCombo(keyCombo)
         }
-        
+
         // Check for conflicts excluding this identifier (in case of update)
         if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
             throw HotkeyError.conflictingHotkey(identifier: conflict.identifier, keyCombo: keyCombo)
         }
-        
+
         // Create hotkey
         let hotkey = Hotkey(
             identifier: identifier,
@@ -89,12 +88,12 @@ public class HotkeyManager: ObservableObject {
             modifiers: parsedHotkey.modifiers,
             action: action
         )
-        
+
         // Register
         queue.sync {
             hotkeys[identifier] = hotkey
         }
-        
+
         // Update published state
         registeredHotkeys[identifier] = RegisteredHotkey(
             identifier: identifier,
@@ -102,10 +101,10 @@ public class HotkeyManager: ObservableObject {
             keyCode: parsedHotkey.keyCode,
             modifiers: parsedHotkey.modifiers
         )
-        
+
         lastError = nil
     }
-    
+
     /// Updates an existing hotkey
     /// - Parameters:
     ///   - identifier: Identifier of the hotkey to update
@@ -116,17 +115,17 @@ public class HotkeyManager: ObservableObject {
         guard let existingHotkey = hotkeys[identifier] else {
             throw HotkeyError.hotkeyNotFound(identifier)
         }
-        
+
         // Parse new combination
         guard let parsedHotkey = parseKeyCombo(newKeyCombo) else {
             throw HotkeyError.invalidKeyCombo(newKeyCombo)
         }
-        
+
         // Check for conflicts
         if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
             throw HotkeyError.conflictingHotkey(identifier: conflict.identifier, keyCombo: newKeyCombo)
         }
-        
+
         // Update hotkey
         let updatedHotkey = Hotkey(
             identifier: identifier,
@@ -134,11 +133,11 @@ public class HotkeyManager: ObservableObject {
             modifiers: parsedHotkey.modifiers,
             action: existingHotkey.action
         )
-        
+
         queue.sync {
             hotkeys[identifier] = updatedHotkey
         }
-        
+
         // Update published state
         registeredHotkeys[identifier] = RegisteredHotkey(
             identifier: identifier,
@@ -146,10 +145,10 @@ public class HotkeyManager: ObservableObject {
             keyCode: parsedHotkey.keyCode,
             modifiers: parsedHotkey.modifiers
         )
-        
+
         lastError = nil
     }
-    
+
     /// Unregisters a hotkey
     /// - Parameter identifier: Identifier of the hotkey to unregister
     @MainActor
@@ -159,7 +158,7 @@ public class HotkeyManager: ObservableObject {
         }
         registeredHotkeys.removeValue(forKey: identifier)
     }
-    
+
     /// Unregisters all hotkeys
     @MainActor
     public func unregisterAllHotkeys() {
@@ -168,7 +167,7 @@ public class HotkeyManager: ObservableObject {
         }
         registeredHotkeys.removeAll()
     }
-    
+
     /// Validates a key combination string
     /// - Parameter keyCombo: Key combination string to validate
     /// - Returns: Validation result with error if invalid
@@ -176,35 +175,35 @@ public class HotkeyManager: ObservableObject {
         guard let parsed = parseKeyCombo(keyCombo) else {
             return ValidationResult(isValid: false, error: "Invalid key combination format")
         }
-        
+
         // Check if it's a reasonable combination
         if parsed.modifiers.isEmpty {
             return ValidationResult(isValid: false, error: "Hotkeys must include at least one modifier key")
         }
-        
+
         if let conflict = checkForConflict(parsed, excludingIdentifier: nil) {
             return ValidationResult(isValid: false, error: "Conflicts with '\(conflict.identifier)'")
         }
-        
+
         return ValidationResult(isValid: true, error: nil)
     }
-    
+
     /// Gets a human-readable description of a hotkey
     /// - Parameter identifier: Hotkey identifier
     /// - Returns: Description string or nil if not found
     public func getHotkeyDescription(for identifier: String) -> String? {
-        return registeredHotkeys[identifier]?.displayString
+        registeredHotkeys[identifier]?.displayString
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func startMonitoring() {
         guard eventMonitor == nil else { return }
-        
+
         // Request accessibility permissions if needed
         let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: false]
         let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
-        
+
         if !trusted {
             DispatchQueue.main.async { [weak self] in
                 self?.lastError = .accessibilityPermissionRequired
@@ -212,32 +211,32 @@ public class HotkeyManager: ObservableObject {
             }
             return
         }
-        
+
         // Create global event monitor
         eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
             self?.handleKeyEvent(event)
         }
-        
+
         DispatchQueue.main.async { [weak self] in
             self?.isActive = true
         }
     }
-    
+
     private func stopMonitoring() {
         if let monitor = eventMonitor {
             NSEvent.removeMonitor(monitor)
             eventMonitor = nil
         }
-        
+
         DispatchQueue.main.async { [weak self] in
             self?.isActive = false
         }
     }
-    
+
     private func handleKeyEvent(_ event: NSEvent) {
         let keyCode = Int(event.keyCode)
         let modifiers = event.modifierFlags
-        
+
         queue.sync {
             // Find matching hotkey
             for (_, hotkey) in hotkeys {
@@ -251,23 +250,23 @@ public class HotkeyManager: ObservableObject {
             }
         }
     }
-    
+
     private func parseKeyCombo(_ combo: String) -> (keyCode: Int, modifiers: NSEvent.ModifierFlags)? {
         let trimmedCombo = combo.trimmingCharacters(in: .whitespaces)
         guard !trimmedCombo.isEmpty else { return nil }
-        
+
         // Check for invalid formats
         if trimmedCombo.hasPrefix("+") || trimmedCombo.hasSuffix("+") || trimmedCombo.contains("++") {
             return nil
         }
-        
+
         let parts = trimmedCombo.lowercased().split(separator: "+").map { String($0).trimmingCharacters(in: .whitespaces) }
         guard !parts.isEmpty else { return nil }
-        
+
         var modifiers: NSEvent.ModifierFlags = []
         var keyPart: String?
         let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift", "fn", "function"])
-        
+
         for part in parts {
             switch part {
             case "cmd", "command":
@@ -289,7 +288,7 @@ public class HotkeyManager: ObservableObject {
                 }
             }
         }
-        
+
         // Check if all parts except the key part are valid modifiers
         for part in parts {
             if part != keyPart && !validModifiers.contains(part) {
@@ -297,14 +296,14 @@ public class HotkeyManager: ObservableObject {
                 return nil
             }
         }
-        
+
         guard let key = keyPart, let keyCode = keyCodeForString(key) else {
             return nil
         }
-        
+
         return (keyCode, modifiers)
     }
-    
+
     private func keyCodeForString(_ key: String) -> Int? {
         // Common key mappings
         let keyMap: [String: Int] = [
@@ -312,11 +311,11 @@ public class HotkeyManager: ObservableObject {
             "a": 0, "s": 1, "d": 2, "f": 3, "h": 4, "g": 5, "z": 6, "x": 7, "c": 8, "v": 9,
             "b": 11, "q": 12, "w": 13, "e": 14, "r": 15, "y": 16, "t": 17, "o": 32, "u": 32,
             "i": 34, "p": 35, "l": 37, "j": 38, "k": 40, "n": 45, "m": 46,
-            
+
             // Numbers
             "1": 18, "2": 19, "3": 20, "4": 21, "5": 23, "6": 22, "7": 26, "8": 28,
             "9": 25, "0": 29,
-            
+
             // Special keys
             "return": 36, "enter": 36,
             "tab": 48,
@@ -324,23 +323,23 @@ public class HotkeyManager: ObservableObject {
             "delete": 51, "backspace": 51,
             "escape": 53, "esc": 53,
             "left": 123, "right": 124, "down": 125, "up": 126,
-            
+
             // Function keys
             "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
             "f7": 98, "f8": 100, "f9": 101, "f10": 109, "f11": 103, "f12": 111,
-            
+
             // Punctuation
             ",": 43, ".": 47, "/": 44, ";": 41, "'": 39, "[": 33, "]": 30,
             "\\": 42, "-": 27, "=": 24, "`": 50
         ]
-        
+
         return keyMap[key.lowercased()]
     }
-    
+
     private func checkForConflict(_ hotkey: (keyCode: Int, modifiers: NSEvent.ModifierFlags), excludingIdentifier: String?) -> RegisteredHotkey? {
         for (identifier, registered) in registeredHotkeys {
             if identifier == excludingIdentifier { continue }
-            
+
             if registered.keyCode == hotkey.keyCode && registered.modifiers == hotkey.modifiers {
                 return registered
             }
@@ -357,24 +356,24 @@ public struct RegisteredHotkey {
     public let keyCombo: String
     public let keyCode: Int
     public let modifiers: NSEvent.ModifierFlags
-    
+
     /// Human-readable display string for the hotkey
     public var displayString: String {
         var parts: [String] = []
-        
+
         if modifiers.contains(.command) { parts.append("⌘") }
         if modifiers.contains(.control) { parts.append("⌃") }
         if modifiers.contains(.option) { parts.append("⌥") }
         if modifiers.contains(.shift) { parts.append("⇧") }
         if modifiers.contains(.function) { parts.append("fn") }
-        
+
         if let keyString = keyStringForCode(keyCode) {
             parts.append(keyString.uppercased())
         }
-        
-        return parts.joined(separator: "")
+
+        return parts.joined()
     }
-    
+
     private func keyStringForCode(_ code: Int) -> String? {
         // Reverse mapping for display
         let codeMap: [Int: String] = [
@@ -387,7 +386,7 @@ public struct RegisteredHotkey {
             122: "F1", 120: "F2", 99: "F3", 118: "F4", 96: "F5", 97: "F6",
             98: "F7", 100: "F8", 101: "F9", 109: "F10", 103: "F11", 111: "F12"
         ]
-        
+
         return codeMap[code]
     }
 }
@@ -398,13 +397,13 @@ private struct Hotkey {
     let keyCode: Int
     let modifiers: NSEvent.ModifierFlags
     let action: () -> Void
-    
+
     func matches(modifiers: NSEvent.ModifierFlags) -> Bool {
         // Check if all required modifiers are present
         let requiredModifiers: NSEvent.ModifierFlags = [.command, .control, .option, .shift, .function]
         let relevantEventModifiers = modifiers.intersection(requiredModifiers)
         let relevantHotkeyModifiers = self.modifiers.intersection(requiredModifiers)
-        
+
         return relevantEventModifiers == relevantHotkeyModifiers
     }
 }
@@ -422,7 +421,7 @@ public enum HotkeyError: LocalizedError {
     case hotkeyNotFound(String)
     case accessibilityPermissionRequired
     case systemError(String)
-    
+
     public var errorDescription: String? {
         switch self {
         case .invalidKeyCombo(let combo):
@@ -449,7 +448,7 @@ extension HotkeyManager {
         case insertLastTranscription
         case showOverlay
         case togglePauseResume
-        
+
         public var defaultKeyCombo: String {
             switch self {
             case .toggleRecording:
@@ -464,7 +463,7 @@ extension HotkeyManager {
                 return "cmd+shift+p"
             }
         }
-        
+
         public var identifier: String {
             switch self {
             case .toggleRecording:
@@ -479,7 +478,7 @@ extension HotkeyManager {
                 return "voicetype.toggle_pause"
             }
         }
-        
+
         public var description: String {
             switch self {
             case .toggleRecording:
@@ -495,7 +494,7 @@ extension HotkeyManager {
             }
         }
     }
-    
+
     /// Registers a preset hotkey
     @MainActor
     public func registerPreset(_ preset: HotkeyPreset, action: @escaping () -> Void) throws {

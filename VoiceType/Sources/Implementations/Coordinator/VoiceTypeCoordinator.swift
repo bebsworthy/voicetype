@@ -16,67 +16,76 @@ import VoiceTypeCore
 @MainActor
 public class VoiceTypeCoordinator: ObservableObject {
     // MARK: - Published Properties
-    
+
     /// Current state of the recording/transcription process
     @Published public private(set) var recordingState: RecordingState = .idle
-    
+
     /// Selected AI model for transcription
     @Published public var selectedModel: ModelType = .fast
-    
+
     /// Last successful transcription result
     @Published public private(set) var lastTranscription: String = ""
-    
+
     /// Current error message (if any)
     @Published public private(set) var errorMessage: String?
-    
+
     /// Recording progress (0.0 to 1.0)
     @Published public private(set) var recordingProgress: Double = 0.0
-    
+
     /// Whether the app is ready to record
     @Published public private(set) var isReady: Bool = false
-    
+
     /// Audio level for visual feedback (0.0 to 1.0)
     @Published public private(set) var audioLevel: Float = 0.0
-    
+
     /// Whether accessibility permission is granted
     @Published public private(set) var hasAccessibilityPermission: Bool = false
-    
+
     /// Whether microphone permission is granted
     @Published public private(set) var hasMicrophonePermission: Bool = false
-    
+
     /// Current audio device being used
     @Published public private(set) var currentAudioDevice: String?
-    
+
+    /// Model loading state
+    @Published public private(set) var isLoadingModel: Bool = false
+
+    /// Model loading progress (0.0 to 1.0)
+    @Published public private(set) var modelLoadingProgress: Double = 0.0
+
+    /// Model loading status message
+    @Published public private(set) var modelLoadingStatus: String?
+
     // MARK: - Dependencies
-    
+
     private let audioProcessor: AudioProcessor
     private let transcriber: Transcriber
     private let textInjector: TextInjector
     private let permissionManager: PermissionManager
     private let hotkeyManager: HotkeyManager
     private let modelManager: ModelManager
-    
+
     // MARK: - Private Properties
-    
+
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
     private let maxRecordingDuration: TimeInterval = 5.0
     private var cancellables = Set<AnyCancellable>()
-    
+
     // State management
     private let stateQueue = DispatchQueue(label: "com.voicetype.coordinator.state")
     private var isProcessing = false
-    
+
     // Error recovery
     private var errorRecoveryAttempts = 0
     private let maxErrorRecoveryAttempts = 3
-    
+
     // Component health monitoring
     private var componentHealthTimer: Timer?
     private var lastHealthCheck = Date()
-    
+
     // MARK: - Initialization
-    
+
     public init(
         audioProcessor: AudioProcessor? = nil,
         transcriber: Transcriber? = nil,
@@ -92,35 +101,35 @@ public class VoiceTypeCoordinator: ObservableObject {
         self.permissionManager = permissionManager ?? PermissionManager()
         self.hotkeyManager = hotkeyManager ?? HotkeyManager()
         self.modelManager = modelManager ?? ModelManager()
-        
+
         setupBindings()
         Task {
             await initialize()
         }
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Start voice dictation
     public func startDictation() async {
         // Ensure atomic state transition
         guard await transitionToState(.recording) else {
             return
         }
-        
+
         do {
             // Reset state
             errorMessage = nil
             recordingProgress = 0.0
             errorRecoveryAttempts = 0
-            
+
             // Check permissions
             guard await checkPermissions() else {
                 await transitionToState(.error("Microphone permission required"))
                 errorMessage = "Microphone permission is required to record audio"
                 return
             }
-            
+
             // Verify model is loaded
             guard transcriber.isModelLoaded else {
                 await transitionToState(.error("No model loaded"))
@@ -131,42 +140,41 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
                 return
             }
-            
+
             // Update state
             recordingStartTime = Date()
-            
+
             // Start recording
             try await audioProcessor.startRecording()
-            
+
             // Start progress timer
             startProgressTimer()
-            
         } catch {
             await handleError(error, duringOperation: .recording)
         }
     }
-    
+
     /// Stop voice dictation and process the audio
     public func stopDictation() async {
         guard recordingState == .recording else { return }
-        
+
         // Stop progress timer
         stopProgressTimer()
-        
+
         // Transition to processing state
         guard await transitionToState(.processing) else {
             return
         }
-        
+
         do {
             // Stop recording and get audio data
             let audioData = await audioProcessor.stopRecording()
-            
+
             // Validate audio data
             guard !audioData.samples.isEmpty else {
                 throw VoiceTypeError.invalidAudioData
             }
-            
+
             // Transcribe audio with error handling
             let result: TranscriptionResult
             do {
@@ -181,23 +189,22 @@ public class VoiceTypeCoordinator: ObservableObject {
                     throw error
                 }
             }
-            
+
             // Validate transcription quality
             if result.confidence < 0.5 {
                 throw VoiceTypeError.lowConfidenceTranscription(result.confidence)
             }
-            
+
             // Store transcription
             lastTranscription = result.text
-            
+
             // Inject text into focused application
             await injectTranscription(result.text)
-            
         } catch {
             await handleError(error, duringOperation: .transcription)
         }
     }
-    
+
     /// Change the selected AI model
     public func changeModel(_ model: ModelType) async {
         // Don't change model during active operations
@@ -205,67 +212,108 @@ public class VoiceTypeCoordinator: ObservableObject {
             errorMessage = "Cannot change model while recording or processing"
             return
         }
-        
+
         selectedModel = model
         UserDefaults.standard.set(model.rawValue, forKey: "selectedModel")
-        
+
         // Load the new model
         await loadSelectedModel()
     }
-    
+
     /// Load the currently selected model
     private func loadSelectedModel() async {
-        // Ensure the model is available
-        if !(await isModelAvailable(selectedModel)) {
-            errorMessage = "Model \(selectedModel.displayName) needs to be downloaded first"
-            
-            // Try fallback to embedded model
-            let isFastAvailable = await isModelAvailable(.fast)
-            if selectedModel != .fast && isFastAvailable {
-                selectedModel = .fast
-                errorMessage = "Using fast model as fallback"
-            } else {
-                isReady = false
-                return
+        // Set loading state
+        isLoadingModel = true
+        modelLoadingProgress = 0.0
+        modelLoadingStatus = "Checking model availability..."
+
+        defer {
+            isLoadingModel = false
+            modelLoadingProgress = 0.0
+            modelLoadingStatus = nil
+        }
+
+        // Check if we're using WhisperKit
+        if let whisperKitTranscriber = transcriber as? WhisperKitTranscriber {
+            let modelManager = WhisperKitModelManager()
+
+            // Check if model needs to be downloaded
+            if !modelManager.isModelDownloaded(modelType: selectedModel) {
+                modelLoadingStatus = "Model needs to be downloaded"
+                errorMessage = "Model \(selectedModel.displayName) needs to be downloaded first. Please go to Settings > Models to download it."
+
+                // Try fallback to embedded model
+                if selectedModel != .fast && modelManager.isModelDownloaded(modelType: .fast) {
+                    selectedModel = .fast
+                    modelLoadingStatus = "Using fast model as fallback"
+                } else {
+                    isReady = false
+                    return
+                }
+            }
+        } else {
+            // For non-WhisperKit transcribers, check basic availability
+            if !(await isModelAvailable(selectedModel)) {
+                errorMessage = "Model \(selectedModel.displayName) is not available"
+
+                // Try fallback to embedded model
+                let isFastAvailable = await isModelAvailable(.fast)
+                if selectedModel != .fast && isFastAvailable {
+                    selectedModel = .fast
+                    errorMessage = "Using fast model as fallback"
+                } else {
+                    isReady = false
+                    return
+                }
             }
         }
-        
+
         do {
+            modelLoadingStatus = "Loading \(selectedModel.displayName) model..."
+            modelLoadingProgress = 0.3
+
             // Load the new model
             try await transcriber.loadModel(selectedModel)
+
+            modelLoadingProgress = 1.0
+            modelLoadingStatus = "Model loaded successfully"
+
+            // Brief pause to show completion
+            try? await Task.sleep(nanoseconds: 500_000_000)
+
             errorMessage = nil
             updateReadyState()
         } catch {
             await handleError(error, duringOperation: .modelLoading)
         }
     }
-    
+
     /// Check if all required permissions are granted
     public func checkAllPermissions() async -> Bool {
         permissionManager.checkMicrophonePermission()
         let micPermission = permissionManager.microphonePermission == .granted
         let accessPermission = permissionManager.hasAccessibilityPermission()
-        
+
         hasMicrophonePermission = micPermission
         hasAccessibilityPermission = accessPermission
-        
+
         // Microphone is required, accessibility is optional (fallback to clipboard)
         return micPermission
     }
-    
+
     /// Request all necessary permissions
     public func requestPermissions() async {
         // Request microphone permission
         if !hasMicrophonePermission {
             _ = await permissionManager.requestMicrophonePermission()
         }
-        
+
         // Check accessibility (don't request, just check)
         _ = permissionManager.hasAccessibilityPermission()
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func setupBindings() {
         // Listen to audio processor state changes
         Task {
@@ -275,7 +323,7 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             }
         }
-        
+
         // Listen to audio level changes for visual feedback
         Task {
             for await level in audioProcessor.audioLevelChanged {
@@ -284,7 +332,7 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             }
         }
-        
+
         // Monitor permission changes
         permissionManager.$microphonePermission
             .sink { [weak self] state in
@@ -294,7 +342,7 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
+
         permissionManager.$accessibilityPermission
             .sink { [weak self] state in
                 Task { @MainActor in
@@ -302,59 +350,49 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             }
             .store(in: &cancellables)
-        
+
         // Monitor model changes
         modelManager.$installedModels
-            .sink { [weak self] models in
+            .sink { [weak self] _ in
                 Task { @MainActor in
                     self?.updateReadyState()
                 }
             }
             .store(in: &cancellables)
-        
+
         // Start component health monitoring
         startHealthMonitoring()
     }
-    
+
     private func initialize() async {
-        do {
-            // Check if we have a model available
-            if await isModelAvailable(selectedModel) {
-                try await transcriber.loadModel(selectedModel)
-                isReady = true
-            } else {
-                // Try to load the embedded fast model as fallback
-                if await isModelAvailable(.fast) {
-                    selectedModel = .fast
-                    try await transcriber.loadModel(.fast)
-                    isReady = true
-                } else {
-                    isReady = false
-                    errorMessage = "No AI models available. Please download a model in settings."
-                }
-            }
-            
-            // Setup hotkey
-            await setupHotkey()
-            
-        } catch {
-            isReady = false
-            errorMessage = "Failed to initialize: \(error.localizedDescription)"
+        // Load saved model preference
+        if let savedModel = UserDefaults.standard.string(forKey: "selectedModel"),
+           let modelType = ModelType(rawValue: savedModel) {
+            selectedModel = modelType
         }
+
+        // Load the selected model
+        await loadSelectedModel()
+
+        // Setup hotkey
+        await setupHotkey()
+
+        // Update ready state
+        updateReadyState()
     }
-    
+
     private func isModelAvailable(_ model: ModelType) async -> Bool {
         // Check if model is embedded
         if model.isEmbedded {
             // For embedded models, check if they exist in the bundle
             return Bundle.main.url(forResource: "whisper-\(model.rawValue)", withExtension: "mlpackage") != nil
         }
-        
+
         // For downloaded models, check with ModelManager
         let installedModels = modelManager.installedModels
         return installedModels.contains { $0.type == model }
     }
-    
+
     private func checkPermissions() async -> Bool {
         permissionManager.checkMicrophonePermission()
         if permissionManager.microphonePermission != .granted {
@@ -369,10 +407,10 @@ public class VoiceTypeCoordinator: ObservableObject {
         }
         return true
     }
-    
+
     private func setupHotkey() async {
         let hotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? HotkeyManager.HotkeyPreset.toggleRecording.defaultKeyCombo
-        
+
         do {
             try hotkeyManager.registerHotkey(
                 identifier: HotkeyManager.HotkeyPreset.toggleRecording.identifier,
@@ -384,7 +422,7 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         } catch {
             errorMessage = "Failed to register hotkey: \(error.localizedDescription)"
-            
+
             // If it's an accessibility permission issue, guide the user
             if case HotkeyError.accessibilityPermissionRequired = error {
                 await MainActor.run {
@@ -393,7 +431,7 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     /// Handle hotkey press with proper state management
     private func handleHotkeyPress() async {
         switch recordingState {
@@ -407,23 +445,23 @@ public class VoiceTypeCoordinator: ObservableObject {
         case .success:
             // Allow starting new recording immediately after success
             await startDictation()
-        case .error(_):
+        case .error:
             // Allow retry after error
             await startDictation()
         }
     }
-    
+
     private func startProgressTimer() {
         recordingProgress = 0.0
-        
+
         recordingTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
             Task { @MainActor in
                 guard let self = self,
                       let startTime = self.recordingStartTime else { return }
-                
+
                 let elapsed = Date().timeIntervalSince(startTime)
                 self.recordingProgress = min(elapsed / self.maxRecordingDuration, 1.0)
-                
+
                 // Auto-stop after max duration
                 if elapsed >= self.maxRecordingDuration {
                     await self.stopDictation()
@@ -431,39 +469,39 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     private func stopProgressTimer() {
         recordingTimer?.invalidate()
         recordingTimer = nil
         recordingProgress = 0.0
         recordingStartTime = nil
     }
-    
+
     // MARK: - State Management
-    
+
     /// Atomically transition to a new state
     private func transitionToState(_ newState: RecordingState) async -> Bool {
-        return await withCheckedContinuation { continuation in
+        await withCheckedContinuation { continuation in
             stateQueue.async { [weak self] in
                 guard let self = self else {
                     continuation.resume(returning: false)
                     return
                 }
-                
+
                 // Validate state transition
                 let isValidTransition = self.isValidStateTransition(from: self.recordingState, to: newState)
-                
+
                 if isValidTransition {
                     Task { @MainActor in
                         self.recordingState = newState
                     }
                 }
-                
+
                 continuation.resume(returning: isValidTransition)
             }
         }
     }
-    
+
     /// Check if a state transition is valid
     private func isValidStateTransition(from currentState: RecordingState, to newState: RecordingState) -> Bool {
         switch (currentState, newState) {
@@ -481,7 +519,7 @@ public class VoiceTypeCoordinator: ObservableObject {
             return false
         }
     }
-    
+
     /// Handle audio state changes from the audio processor
     private func handleAudioStateChange(_ state: RecordingState) {
         // Only update if we're not already processing
@@ -491,9 +529,9 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - Error Handling
-    
+
     /// Operation types for error handling
     private enum Operation {
         case recording
@@ -501,11 +539,11 @@ public class VoiceTypeCoordinator: ObservableObject {
         case textInjection
         case modelLoading
     }
-    
+
     /// Handle errors with recovery strategies
     private func handleError(_ error: Error, duringOperation operation: Operation) async {
         errorRecoveryAttempts += 1
-        
+
         // Convert to VoiceTypeError if needed
         let voiceTypeError: VoiceTypeError
         if let vte = error as? VoiceTypeError {
@@ -513,10 +551,10 @@ public class VoiceTypeCoordinator: ObservableObject {
         } else {
             voiceTypeError = .unknown(error.localizedDescription)
         }
-        
+
         // Log error for debugging
         print("[VoiceTypeCoordinator] Error during \(operation): \(voiceTypeError)")
-        
+
         // Apply recovery strategy
         switch voiceTypeError {
         case .microphonePermissionDenied:
@@ -525,13 +563,13 @@ public class VoiceTypeCoordinator: ObservableObject {
             await MainActor.run {
                 permissionManager.showPermissionDeniedAlert(for: .microphone)
             }
-            
+
         case .audioDeviceDisconnected:
             await transitionToState(.error("Audio device disconnected"))
             errorMessage = "Your audio device was disconnected. Please reconnect and try again."
             // Monitor for device reconnection
             startAudioDeviceMonitoring()
-            
+
         case .modelNotFound, .modelLoadingFailed:
             await transitionToState(.error("Model loading failed"))
             errorMessage = voiceTypeError.localizedDescription
@@ -539,7 +577,7 @@ public class VoiceTypeCoordinator: ObservableObject {
             if selectedModel != .fast && errorRecoveryAttempts < maxErrorRecoveryAttempts {
                 await changeModel(.fast)
             }
-            
+
         case .noFocusedApplication, .unsupportedApplication:
             // Don't transition to error state, just use clipboard fallback
             errorMessage = "Text copied to clipboard. Press ⌘V to paste."
@@ -548,16 +586,16 @@ public class VoiceTypeCoordinator: ObservableObject {
                 await copyToClipboard(lastTranscription)
             }
             await transitionToState(.success)
-            
+
         case .networkUnavailable:
             await transitionToState(.error("Network unavailable"))
             errorMessage = "Network is required for model downloads. Please check your connection."
-            
+
         default:
             await transitionToState(.error(voiceTypeError.localizedDescription))
             errorMessage = voiceTypeError.recoverySuggestion ?? voiceTypeError.localizedDescription
         }
-        
+
         // Reset to idle after delay if in error state
         if case .error = recordingState {
             Task {
@@ -568,9 +606,9 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     // MARK: - Text Injection
-    
+
     /// Inject transcription with fallback strategies
     private func injectTranscription(_ text: String) async {
         await withCheckedContinuation { continuation in
@@ -580,12 +618,12 @@ public class VoiceTypeCoordinator: ObservableObject {
                         continuation.resume()
                         return
                     }
-                    
+
                     switch result {
                     case .success:
                         await self.transitionToState(.success)
                         self.errorMessage = nil
-                        
+
                         // Reset to idle after success
                         Task {
                             try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -593,19 +631,19 @@ public class VoiceTypeCoordinator: ObservableObject {
                                 await self.transitionToState(.idle)
                             }
                         }
-                        
+
                     case .failure(let error):
                         // If injection fails, fallback to clipboard
                         await self.copyToClipboard(text)
-                        
+
                         if case .noFocusedElement = error {
                             self.errorMessage = "Text copied to clipboard. Press ⌘V to paste."
                         } else {
                             self.errorMessage = "Text injection failed. Text copied to clipboard instead."
                         }
-                        
+
                         await self.transitionToState(.success)
-                        
+
                         // Still count as success since user has the text
                         Task {
                             try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
@@ -614,13 +652,13 @@ public class VoiceTypeCoordinator: ObservableObject {
                             }
                         }
                     }
-                    
+
                     continuation.resume()
                 }
             }
         }
     }
-    
+
     /// Copy text to clipboard
     private func copyToClipboard(_ text: String) async {
         await MainActor.run {
@@ -629,9 +667,9 @@ public class VoiceTypeCoordinator: ObservableObject {
             pasteboard.setString(text, forType: .string)
         }
     }
-    
+
     // MARK: - Component Health Monitoring
-    
+
     /// Start monitoring component health
     private func startHealthMonitoring() {
         componentHealthTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
@@ -640,27 +678,27 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     /// Check health of all components
     private func checkComponentHealth() async {
         lastHealthCheck = Date()
-        
+
         // Check audio processor
         if audioProcessor.isRecording && recordingState != .recording {
             // State mismatch, reset
             await audioProcessor.stopRecording()
         }
-        
+
         // Check model status
         if !transcriber.isModelLoaded && isReady {
             isReady = false
             await loadSelectedModel()
         }
-        
+
         // Check permissions periodically
         _ = await checkAllPermissions()
     }
-    
+
     /// Start monitoring for audio device reconnection
     private func startAudioDeviceMonitoring() {
         // Monitor audio device changes on macOS
@@ -673,7 +711,7 @@ public class VoiceTypeCoordinator: ObservableObject {
                 await self?.handleAudioRouteChange(notification)
             }
         }
-        
+
         NotificationCenter.default.addObserver(
             forName: .AVCaptureDeviceWasDisconnected,
             object: nil,
@@ -683,11 +721,11 @@ public class VoiceTypeCoordinator: ObservableObject {
                 await self?.handleAudioRouteChange(notification)
             }
         }
-        
+
         // Update current device on startup
         updateCurrentAudioDevice()
     }
-    
+
     /// Handle audio route changes
     private func handleAudioRouteChange(_ notification: Notification) async {
         // On macOS, handle device changes differently
@@ -703,23 +741,23 @@ public class VoiceTypeCoordinator: ObservableObject {
             currentAudioDevice = nil
         }
     }
-    
+
     /// Update current audio device name
     private func updateCurrentAudioDevice() {
         // On macOS, use AVCaptureDevice
         let devices = AVCaptureDevice.devices(for: .audio)
-        currentAudioDevice = devices.first(where: { $0.isConnected })?.localizedName
+        currentAudioDevice = devices.first { $0.isConnected }?.localizedName
     }
-    
+
     /// Update the ready state based on component status
     private func updateReadyState() {
-        isReady = hasMicrophonePermission && 
-                  transcriber.isModelLoaded && 
+        isReady = hasMicrophonePermission &&
+                  transcriber.isModelLoaded &&
                   (modelManager.installedModels.contains { $0.type == selectedModel } || selectedModel.isEmbedded)
     }
-    
+
     // MARK: - Public Properties
-    
+
     /// Selected language for transcription
     public var selectedLanguage: Language? {
         get {
@@ -737,7 +775,7 @@ public class VoiceTypeCoordinator: ObservableObject {
             }
         }
     }
-    
+
     /// Get a summary of the current app state
     public var stateSummary: String {
         switch recordingState {
@@ -765,19 +803,19 @@ class SettingsManager: ObservableObject {
             UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedModel")
         }
     }
-    
+
     @Published var globalHotkey: String {
         didSet {
             UserDefaults.standard.set(globalHotkey, forKey: "globalHotkey")
         }
     }
-    
+
     @Published var showMenuBarIcon: Bool {
         didSet {
             UserDefaults.standard.set(showMenuBarIcon, forKey: "showMenuBarIcon")
         }
     }
-    
+
     @Published var selectedLanguage: Language? {
         didSet {
             if let language = selectedLanguage {
@@ -787,22 +825,22 @@ class SettingsManager: ObservableObject {
             }
         }
     }
-    
+
     init() {
         // Load saved preferences
         let modelString = UserDefaults.standard.string(forKey: "selectedModel") ?? ModelType.fast.rawValue
         self.selectedModel = ModelType(rawValue: modelString) ?? .fast
-        
+
         self.globalHotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? "ctrl+shift+v"
         self.showMenuBarIcon = UserDefaults.standard.bool(forKey: "showMenuBarIcon")
-        
+
         if let languageString = UserDefaults.standard.string(forKey: "selectedLanguage"),
            let language = Language(rawValue: languageString) {
             self.selectedLanguage = language
         } else {
             self.selectedLanguage = nil // Auto-detect
         }
-        
+
         // Set default to true if not set
         if UserDefaults.standard.object(forKey: "showMenuBarIcon") == nil {
             UserDefaults.standard.set(true, forKey: "showMenuBarIcon")

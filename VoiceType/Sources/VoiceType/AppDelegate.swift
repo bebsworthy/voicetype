@@ -11,66 +11,83 @@ import ServiceManagement
 
 /// AppDelegate for handling macOS app lifecycle events
 class AppDelegate: NSObject, NSApplicationDelegate {
-    
     // MARK: - Properties
-    
+
     private var lifecycleManager: AppLifecycleManager?
     private var statusItem: NSStatusItem?
-    
+
     // MARK: - NSApplicationDelegate
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Configure app to be menu bar only (no dock icon)
         NSApp.setActivationPolicy(.accessory)
-        
+
         // Additional setup after app launch
         setupBackgroundTasks()
         setupNotificationHandlers()
     }
-    
+
     func applicationWillTerminate(_ notification: Notification) {
         // Clean up before termination
         lifecycleManager?.handleAppTermination()
     }
-    
+
     func applicationDidBecomeActive(_ notification: Notification) {
         // App became active (foreground)
         lifecycleManager?.handleEnterForeground()
     }
-    
+
     func applicationDidResignActive(_ notification: Notification) {
         // App resigned active (background)
         lifecycleManager?.handleEnterBackground()
     }
-    
+
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         // Don't quit when windows are closed (menu bar app)
-        return false
+        false
     }
-    
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         // Handle dock icon click
         if !flag {
             // Show settings window
-            if #available(macOS 13.0, *) {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-            } else {
-                NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-            }
+            showSettings()
         }
         return true
     }
-    
+
+    @objc func showSettingsWindow(_ sender: Any?) {
+        showSettings()
+    }
+
+    @objc func showPreferencesWindow(_ sender: Any?) {
+        showSettings()
+    }
+
+    private func showSettings() {
+        // Open the Settings window using the appropriate method
+        if #available(macOS 14.0, *) {
+            // For macOS 14+, use the SettingsLink approach
+            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
+        } else if #available(macOS 13.0, *) {
+            // For macOS 13, use showSettingsWindow
+            NSApp.sendAction(#selector(AppDelegate.showSettingsWindow(_:)), to: nil, from: nil)
+        } else {
+            // For older versions, use showPreferencesWindow
+            NSApp.sendAction(#selector(AppDelegate.showPreferencesWindow(_:)), to: nil, from: nil)
+        }
+    }
+
     // MARK: - Background Tasks
-    
+
     private func setupBackgroundTasks() {
         // Schedule periodic tasks using Timer
         schedulePeriodicTasks()
-        
+
         // Set up URLSession for background downloads
         setupBackgroundURLSession()
     }
-    
+
     private func schedulePeriodicTasks() {
         // Schedule maintenance every 24 hours
         Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { _ in
@@ -78,7 +95,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 await self.performMaintenance()
             }
         }
-        
+
         // Check for pending model downloads every 5 minutes
         Timer.scheduledTimer(withTimeInterval: 300, repeats: true) { _ in
             Task {
@@ -86,38 +103,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     private func setupBackgroundURLSession() {
         // Configure URLSession for background downloads
         let config = URLSessionConfiguration.background(withIdentifier: "com.voicetype.modeldownload")
         config.isDiscretionary = true
         config.sessionSendsLaunchEvents = true
-        
+
         // This will be used by ModelDownloader for background downloads
     }
-    
+
     private func checkPendingDownloads() async {
         // Check for pending model downloads
         // This would be implemented with ModelManager
     }
-    
+
     private func performMaintenance() async {
         // Clean up cache
         let fileManager = FileManager.default
         try? fileManager.cleanupCache(olderThan: 7)
-        
+
         // Clean up partial downloads
         try? fileManager.cleanupPartialDownloads()
-        
+
         // Other maintenance tasks
     }
-    
+
     // MARK: - Notification Handlers
-    
+
     private func setupNotificationHandlers() {
         // Listen for system events
         let notificationCenter = NSWorkspace.shared.notificationCenter
-        
+
         // System sleep
         notificationCenter.addObserver(
             self,
@@ -125,7 +142,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.willSleepNotification,
             object: nil
         )
-        
+
         // System wake
         notificationCenter.addObserver(
             self,
@@ -133,7 +150,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.didWakeNotification,
             object: nil
         )
-        
+
         // Screen lock
         notificationCenter.addObserver(
             self,
@@ -141,7 +158,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             name: NSWorkspace.screensDidSleepNotification,
             object: nil
         )
-        
+
         // Screen unlock
         notificationCenter.addObserver(
             self,
@@ -150,27 +167,27 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
     }
-    
+
     @MainActor @objc private func systemWillSleep(_ notification: Notification) {
         // Handle system sleep
         lifecycleManager?.handleEnterBackground()
     }
-    
+
     @MainActor @objc private func systemDidWake(_ notification: Notification) {
         // Handle system wake
         lifecycleManager?.handleEnterForeground()
     }
-    
+
     @MainActor @objc private func screenDidLock(_ notification: Notification) {
         // Handle screen lock - pause recording if active
     }
-    
+
     @MainActor @objc private func screenDidUnlock(_ notification: Notification) {
         // Handle screen unlock
     }
-    
+
     // MARK: - Login Item Management
-    
+
     func setLaunchAtLogin(_ enabled: Bool) {
         // Use SMAppService for modern login item management
         if #available(macOS 13.0, *) {
@@ -188,12 +205,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             setLegacyLoginItem(enabled)
         }
     }
-    
+
     private func setLegacyLoginItem(_ enabled: Bool) {
         // Legacy login item management for macOS < 13.0
         // Using Launch Services for older systems
         let bundleURL = Bundle.main.bundleURL
-        
+
         if enabled {
             // Add to login items using AppleScript
             let script = """
@@ -201,7 +218,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 make login item at end with properties {path:"\(bundleURL.path)", hidden:false}
             end tell
             """
-            
+
             var error: NSDictionary?
             if let scriptObject = NSAppleScript(source: script) {
                 scriptObject.executeAndReturnError(&error)
@@ -216,7 +233,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 delete login item "VoiceType"
             end tell
             """
-            
+
             var error: NSDictionary?
             if let scriptObject = NSAppleScript(source: script) {
                 scriptObject.executeAndReturnError(&error)
@@ -226,11 +243,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     // MARK: - Public Methods
-    
+
     func setLifecycleManager(_ manager: AppLifecycleManager) {
         self.lifecycleManager = manager
     }
 }
-

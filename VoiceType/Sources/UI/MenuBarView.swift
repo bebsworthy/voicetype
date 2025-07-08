@@ -1,57 +1,58 @@
 import SwiftUI
 import VoiceTypeCore
 import VoiceTypeImplementations
+import AppKit
 
 /// Main menu bar interface for VoiceType
 public struct MenuBarView: View {
     @ObservedObject var coordinator: VoiceTypeCoordinator
-    
+
     public init(coordinator: VoiceTypeCoordinator) {
         self.coordinator = coordinator
     }
-    
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             // Status Section
             statusSection
-            
+
             Divider()
                 .padding(.horizontal, -12)
-            
+
             // Quick Actions
             quickActionsSection
-            
+
             Divider()
                 .padding(.horizontal, -12)
-            
+
             // Bottom Actions
             bottomActionsSection
         }
         .padding(12)
         .frame(width: 200)
     }
-    
+
     // MARK: - Status Section
-    
+
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Status indicator with icon and text
             HStack(spacing: 8) {
                 statusIndicator
                     .frame(width: 8, height: 8)
-                
+
                 Text(statusText)
                     .font(.system(size: 12, weight: .medium))
                     .foregroundColor(statusTextColor)
             }
-            
+
             // Recording progress (if recording)
             if coordinator.recordingState == .recording {
                 ProgressView(value: coordinator.recordingProgress)
                     .progressViewStyle(LinearProgressViewStyle())
                     .scaleEffect(x: 1, y: 0.5, anchor: .center)
             }
-            
+
             // Error message (if any)
             if let error = coordinator.errorMessage {
                 Text(error)
@@ -60,7 +61,7 @@ public struct MenuBarView: View {
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            
+
             // Last transcription preview (if success)
             if coordinator.recordingState == .success && !coordinator.lastTranscription.isEmpty {
                 Text("✓ \(coordinator.lastTranscription)")
@@ -72,9 +73,9 @@ public struct MenuBarView: View {
             }
         }
     }
-    
+
     // MARK: - Quick Actions Section
-    
+
     private var quickActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
             // Start/Stop Dictation Button
@@ -99,7 +100,7 @@ public struct MenuBarView: View {
             }
             .buttonStyle(MenuButtonStyle())
             .disabled(!coordinator.isReady || coordinator.recordingState == .processing)
-            
+
             // Model selection
             HStack {
                 Image(systemName: "cpu")
@@ -109,33 +110,89 @@ public struct MenuBarView: View {
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                 Spacer()
-                Text(coordinator.selectedModel.displayName)
-                    .font(.system(size: 11, weight: .medium))
+
+                if coordinator.isLoadingModel {
+                    HStack(spacing: 4) {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                        if let status = coordinator.modelLoadingStatus {
+                            Text(status)
+                                .font(.system(size: 10))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                } else {
+                    Text(coordinator.selectedModel.displayName)
+                        .font(.system(size: 11, weight: .medium))
+                }
             }
         }
     }
-    
+
     // MARK: - Bottom Actions Section
-    
+
     private var bottomActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Button(action: {
-                if #available(macOS 13.0, *) {
-                    // Use newer settings API if available
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                } else {
-                    // Fall back to preferences window
-                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+            if #available(macOS 14.0, *) {
+                SettingsLink {
+                    HStack {
+                        Image(systemName: "gear")
+                        Text("Settings...")
+                        Spacer()
+                    }
                 }
-            }) {
-                HStack {
-                    Image(systemName: "gear")
-                    Text("Settings...")
-                    Spacer()
+                .buttonStyle(MenuButtonStyle())
+            } else {
+                Button(action: {
+                    // For older macOS versions, we need to trigger the menu item
+                    if #available(macOS 13.0, *) {
+                        // Try to find and perform the settings menu item
+                        if let menu = NSApp.mainMenu {
+                            for item in menu.items {
+                                if let submenu = item.submenu {
+                                    for subItem in submenu.items {
+                                        if subItem.action == Selector(("showSettingsWindow:")) {
+                                            subItem.target?.perform(subItem.action, with: subItem)
+                                            return
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Fallback: send action directly
+                        if let appDelegate = NSApp.delegate {
+                            appDelegate.perform(Selector(("showSettingsWindow:")), with: nil)
+                        }
+                    } else {
+                        // macOS 12 and below
+                        if let menu = NSApp.mainMenu {
+                            for item in menu.items {
+                                if let submenu = item.submenu {
+                                    for subItem in submenu.items {
+                                        if subItem.action == Selector(("showPreferencesWindow:")) {
+                                            subItem.target?.perform(subItem.action, with: subItem)
+                                            return
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        // Fallback: send action directly
+                        if let appDelegate = NSApp.delegate {
+                            appDelegate.perform(Selector(("showPreferencesWindow:")), with: nil)
+                        }
+                    }
+                }) {
+                    HStack {
+                        Image(systemName: "gear")
+                        Text("Settings...")
+                        Spacer()
+                    }
                 }
+                .buttonStyle(MenuButtonStyle())
             }
-            .buttonStyle(MenuButtonStyle())
-            
+
             Button(action: {
                 NSApplication.shared.terminate(nil)
             }) {
@@ -148,9 +205,9 @@ public struct MenuBarView: View {
             .buttonStyle(MenuButtonStyle())
         }
     }
-    
+
     // MARK: - Helper Properties
-    
+
     private var statusIndicator: some View {
         Circle()
             .fill(statusColor)
@@ -159,7 +216,7 @@ public struct MenuBarView: View {
                     .stroke(statusColor.opacity(0.3), lineWidth: 1)
             )
     }
-    
+
     private var statusColor: Color {
         switch coordinator.recordingState {
         case .idle:
@@ -174,7 +231,7 @@ public struct MenuBarView: View {
             return .red
         }
     }
-    
+
     private var statusText: String {
         switch coordinator.recordingState {
         case .idle:
@@ -189,7 +246,7 @@ public struct MenuBarView: View {
             return message
         }
     }
-    
+
     private var statusTextColor: Color {
         switch coordinator.recordingState {
         case .error:
@@ -200,7 +257,7 @@ public struct MenuBarView: View {
             return .primary
         }
     }
-    
+
     private var dictationButtonIcon: String {
         switch coordinator.recordingState {
         case .idle:
@@ -213,7 +270,7 @@ public struct MenuBarView: View {
             return "mic.fill"
         }
     }
-    
+
     private var dictationButtonColor: Color {
         switch coordinator.recordingState {
         case .recording:
@@ -224,7 +281,7 @@ public struct MenuBarView: View {
             return .primary
         }
     }
-    
+
     private var dictationButtonText: String {
         switch coordinator.recordingState {
         case .idle:
@@ -237,15 +294,15 @@ public struct MenuBarView: View {
             return "Start Dictation"
         }
     }
-    
+
     private var hotkeyHint: String {
         let hotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? "⌃⇧V"
         return formatHotkey(hotkey)
     }
-    
+
     private func formatHotkey(_ hotkey: String) -> String {
         // Convert hotkey format to symbols
-        return hotkey
+        hotkey
             .replacingOccurrences(of: "ctrl", with: "⌃")
             .replacingOccurrences(of: "cmd", with: "⌘")
             .replacingOccurrences(of: "shift", with: "⇧")

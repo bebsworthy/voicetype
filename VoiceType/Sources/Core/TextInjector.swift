@@ -5,13 +5,13 @@ import Foundation
 public protocol TextInjector {
     /// Human-readable name of this injection method
     var methodName: String { get }
-    
+
     /// Injects text using this method
     /// - Parameters:
     ///   - text: The text to inject
     ///   - completion: Callback with the result
     func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void)
-    
+
     /// Checks if this injector is compatible with the current context
     /// - Returns: true if this injector can be used right now
     func isCompatibleWithCurrentContext() -> Bool
@@ -25,7 +25,7 @@ public enum TextInjectionError: LocalizedError {
     case clipboardError(String)
     case injectionFailed(reason: String)
     case timeout
-    
+
     public var errorDescription: String? {
         switch self {
         case .incompatibleApplication(let app):
@@ -49,7 +49,7 @@ public struct ApplicationContext {
     public let bundleIdentifier: String?
     public let name: String
     public let isRunning: Bool
-    
+
     public init(bundleIdentifier: String?, name: String, isRunning: Bool) {
         self.bundleIdentifier = bundleIdentifier
         self.name = name
@@ -63,7 +63,7 @@ public struct InjectionResult {
     public let method: String
     public let error: TextInjectionError?
     public let fallbackUsed: Bool
-    
+
     public init(success: Bool, method: String, error: TextInjectionError? = nil, fallbackUsed: Bool = false) {
         self.success = success
         self.method = method

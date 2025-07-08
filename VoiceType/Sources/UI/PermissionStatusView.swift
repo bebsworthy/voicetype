@@ -16,7 +16,7 @@ extension PermissionState {
             return "checkmark.circle"
         }
     }
-    
+
     /// User-friendly description of the permission state
     var description: String {
         switch self {
@@ -47,16 +47,16 @@ extension PermissionState {
 /// ```
 public struct PermissionStatusView: View {
     @ObservedObject var permissionManager: PermissionManager
-    
+
     public init(permissionManager: PermissionManager) {
         self.permissionManager = permissionManager
     }
-    
+
     public var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Permissions")
                 .font(.headline)
-            
+
             VStack(spacing: 12) {
                 // Microphone Permission Row
                 PermissionRowView(
@@ -71,9 +71,9 @@ public struct PermissionStatusView: View {
                         permissionManager.openMicrophonePreferences()
                     }
                 )
-                
+
                 Divider()
-                
+
                 // Accessibility Permission Row
                 PermissionRowView(
                     permissionType: .accessibility,
@@ -91,7 +91,7 @@ public struct PermissionStatusView: View {
             .padding()
             .background(Color(NSColor.controlBackgroundColor))
             .cornerRadius(8)
-            
+
             // Status Summary
             if permissionManager.allPermissionsGranted {
                 HStack {
@@ -110,7 +110,7 @@ public struct PermissionStatusView: View {
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             // Refresh Button
             Button(action: {
                 permissionManager.refreshPermissionStates()
@@ -134,7 +134,7 @@ struct PermissionRowView: View {
     let permissionState: PermissionState
     let onRequestPermission: () -> Void
     let onOpenSettings: () -> Void
-    
+
     var body: some View {
         HStack {
             // Permission Icon and Name
@@ -142,26 +142,26 @@ struct PermissionRowView: View {
                 Image(systemName: permissionState.iconName)
                     .foregroundColor(color(for: permissionState))
                     .font(.title2)
-                
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text(permissionType.displayName)
                         .font(.system(.body, design: .rounded))
                         .fontWeight(.medium)
-                    
+
                     Text(permissionType.purpose)
                         .font(.caption)
                         .foregroundColor(.secondary)
                 }
             }
-            
+
             Spacer()
-            
+
             // Permission Status and Action
             HStack(spacing: 8) {
                 Text(permissionState.description)
                     .font(.caption)
                     .foregroundColor(.secondary)
-                
+
                 switch permissionState {
                 case .notRequested, .undetermined:
                     Button("Request") {
@@ -169,14 +169,14 @@ struct PermissionRowView: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.small)
-                    
+
                 case .denied:
                     Button("Open Settings") {
                         onOpenSettings()
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
-                    
+
                 case .granted:
                     // No action needed
                     EmptyView()
@@ -185,7 +185,7 @@ struct PermissionRowView: View {
         }
         .padding(.vertical, 4)
     }
-    
+
     private func color(for state: PermissionState) -> Color {
         switch state {
         case .notRequested, .undetermined:
@@ -201,14 +201,14 @@ struct PermissionRowView: View {
 /// A compact permission indicator for use in the menu bar
 struct PermissionIndicatorView: View {
     @ObservedObject var permissionManager: PermissionManager
-    
+
     var body: some View {
         HStack(spacing: 4) {
             if !permissionManager.allPermissionsGranted {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .foregroundColor(.orange)
                     .font(.caption)
-                
+
                 Text("Permissions Required")
                     .font(.caption)
                     .foregroundColor(.secondary)
@@ -221,16 +221,16 @@ struct PermissionIndicatorView: View {
 struct PermissionOnboardingView: View {
     @ObservedObject var permissionManager: PermissionManager
     @Binding var isPresented: Bool
-    
+
     @State private var currentStep: OnboardingStep = .welcome
-    
+
     enum OnboardingStep {
         case welcome
         case microphone
         case accessibility
         case complete
     }
-    
+
     var body: some View {
         VStack(spacing: 24) {
             // Header
@@ -238,40 +238,40 @@ struct PermissionOnboardingView: View {
                 Image(systemName: "mic.circle.fill")
                     .font(.system(size: 60))
                     .foregroundColor(.accentColor)
-                
+
                 Text("VoiceType Setup")
                     .font(.largeTitle)
                     .fontWeight(.bold)
-                
+
                 Text(subtitle(for: currentStep))
                     .font(.title3)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
             }
             .padding(.top, 40)
-            
+
             Spacer()
-            
+
             // Content
             Group {
                 switch currentStep {
                 case .welcome:
                     WelcomeStepView()
-                    
+
                 case .microphone:
                     MicrophoneStepView(permissionManager: permissionManager)
-                    
+
                 case .accessibility:
                     AccessibilityStepView(permissionManager: permissionManager)
-                    
+
                 case .complete:
                     CompleteStepView()
                 }
             }
             .frame(maxWidth: 500)
-            
+
             Spacer()
-            
+
             // Navigation
             HStack {
                 if currentStep != .welcome {
@@ -282,9 +282,9 @@ struct PermissionOnboardingView: View {
                     }
                     .buttonStyle(.bordered)
                 }
-                
+
                 Spacer()
-                
+
                 if currentStep == .complete {
                     Button("Done") {
                         isPresented = false
@@ -305,7 +305,7 @@ struct PermissionOnboardingView: View {
         .padding(.horizontal, 40)
         .frame(width: 600, height: 500)
     }
-    
+
     private func subtitle(for step: OnboardingStep) -> String {
         switch step {
         case .welcome:
@@ -318,7 +318,7 @@ struct PermissionOnboardingView: View {
             return "You're all set!"
         }
     }
-    
+
     private func nextStep(from step: OnboardingStep) -> OnboardingStep {
         switch step {
         case .welcome:
@@ -331,7 +331,7 @@ struct PermissionOnboardingView: View {
             return .complete
         }
     }
-    
+
     private func previousStep(from step: OnboardingStep) -> OnboardingStep {
         switch step {
         case .welcome:
@@ -354,18 +354,18 @@ struct WelcomeStepView: View {
             Text("Welcome to VoiceType")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             Text("VoiceType is a privacy-first dictation tool that converts your speech to text using local AI models.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
-            
+
             VStack(alignment: .leading, spacing: 12) {
                 FeatureRow(icon: "lock.fill", text: "100% Private - All processing happens on your device")
                 FeatureRow(icon: "waveform", text: "Fast & Accurate - Real-time transcription")
                 FeatureRow(icon: "keyboard", text: "Works Everywhere - Insert text into any app")
             }
             .padding(.vertical)
-            
+
             Text("We'll need to set up a few permissions to get started.")
                 .font(.caption)
                 .foregroundColor(.secondary)
@@ -376,21 +376,21 @@ struct WelcomeStepView: View {
 
 struct MicrophoneStepView: View {
     @ObservedObject var permissionManager: PermissionManager
-    
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "mic.fill")
                 .font(.system(size: 48))
                 .foregroundColor(color(for: permissionManager.microphonePermission))
-            
+
             Text("Microphone Access")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             Text("VoiceType needs access to your microphone to record and transcribe your speech.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
-            
+
             if permissionManager.microphonePermission == .notRequested {
                 Button("Grant Microphone Access") {
                     Task {
@@ -403,7 +403,7 @@ struct MicrophoneStepView: View {
                 VStack(spacing: 8) {
                     Text("Microphone access was denied.")
                         .foregroundColor(.red)
-                    
+
                     Button("Open System Preferences") {
                         permissionManager.openMicrophonePreferences()
                     }
@@ -419,7 +419,7 @@ struct MicrophoneStepView: View {
             }
         }
     }
-    
+
     private func color(for state: PermissionState) -> Color {
         switch state {
         case .notRequested, .undetermined:
@@ -434,33 +434,33 @@ struct MicrophoneStepView: View {
 
 struct AccessibilityStepView: View {
     @ObservedObject var permissionManager: PermissionManager
-    
+
     var body: some View {
         VStack(spacing: 16) {
             Image(systemName: "accessibility")
                 .font(.system(size: 48))
                 .foregroundColor(permissionManager.accessibilityPermission == .granted ? .green : .gray)
-            
+
             Text("Accessibility Access")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             Text("VoiceType needs accessibility permission to insert transcribed text into other applications.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
-            
+
             if permissionManager.accessibilityPermission != .granted {
                 VStack(spacing: 12) {
                     Text("This permission must be enabled manually in System Preferences.")
                         .font(.caption)
                         .foregroundColor(.secondary)
-                    
+
                     Button("Open Accessibility Settings") {
                         permissionManager.showAccessibilityPermissionGuide()
                     }
                     .buttonStyle(.borderedProminent)
                     .controlSize(.large)
-                    
+
                     Button("Check Permission Status") {
                         _ = permissionManager.hasAccessibilityPermission()
                     }
@@ -485,19 +485,19 @@ struct CompleteStepView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 60))
                 .foregroundColor(.green)
-            
+
             Text("Setup Complete!")
                 .font(.title2)
                 .fontWeight(.semibold)
-            
+
             Text("VoiceType is ready to use. Press ⌃⇧V (or your custom hotkey) to start dictating.")
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
-            
+
             VStack(alignment: .leading, spacing: 8) {
                 Text("Quick Tips:")
                     .font(.headline)
-                
+
                 Text("• Press your hotkey to start recording")
                 Text("• Speak clearly for best results")
                 Text("• Recording stops automatically after 5 seconds")
@@ -514,13 +514,13 @@ struct CompleteStepView: View {
 struct FeatureRow: View {
     let icon: String
     let text: String
-    
+
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .foregroundColor(.accentColor)
                 .frame(width: 20)
-            
+
             Text(text)
                 .font(.callout)
         }
@@ -535,10 +535,10 @@ struct PermissionStatusView_Previews: PreviewProvider {
             PermissionStatusView(permissionManager: PermissionManager())
                 .frame(width: 400)
                 .previewDisplayName("Permission Status")
-            
+
             PermissionIndicatorView(permissionManager: PermissionManager())
                 .previewDisplayName("Permission Indicator")
-            
+
             PermissionOnboardingView(
                 permissionManager: PermissionManager(),
                 isPresented: .constant(true)

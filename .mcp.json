@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "swift-mcp-gui": {
+      "command": "/Users/boyd/.swiftpm/bin/swift-mcp-gui"
+    }
+  }
+}

@@ -4,19 +4,19 @@ import VoiceTypeCore
 /// Mock text injector for testing purposes
 public class MockTextInjector: TextInjector {
     public var methodName: String { "Mock" }
-    
+
     // Configuration
     public var shouldSucceed = true
     public var failureError: TextInjectionError = .injectionFailed(reason: "Mock failure")
     public var injectionDelay: TimeInterval = 0.1
     public var isCompatible = true
-    
+
     // Tracking
     public private(set) var injectionHistory: [InjectionRecord] = []
     public var compatibilityCheckCount = 0
-    
+
     public init() {}
-    
+
     public func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void) {
         let record = InjectionRecord(
             text: text,
@@ -24,14 +24,14 @@ public class MockTextInjector: TextInjector {
             willSucceed: shouldSucceed
         )
         injectionHistory.append(record)
-        
+
         // Simulate async operation
         DispatchQueue.global().asyncAfter(deadline: .now() + injectionDelay) { [weak self] in
             guard let self = self else {
                 completion(.failure(.injectionFailed(reason: "Mock injector deallocated")))
                 return
             }
-            
+
             if self.shouldSucceed {
                 completion(.success(()))
             } else {
@@ -39,12 +39,12 @@ public class MockTextInjector: TextInjector {
             }
         }
     }
-    
+
     public func isCompatibleWithCurrentContext() -> Bool {
         compatibilityCheckCount += 1
         return isCompatible
     }
-    
+
     // Test helpers
     public func reset() {
         injectionHistory.removeAll()
@@ -54,15 +54,15 @@ public class MockTextInjector: TextInjector {
         injectionDelay = 0.1
         failureError = .injectionFailed(reason: "Mock failure")
     }
-    
+
     public func getLastInjectedText() -> String? {
-        return injectionHistory.last?.text
+        injectionHistory.last?.text
     }
-    
+
     public func getTotalInjectionsCount() -> Int {
-        return injectionHistory.count
+        injectionHistory.count
     }
-    
+
     public func simulateRandomFailures(failureRate: Double = 0.3) {
         shouldSucceed = Double.random(in: 0...1) > failureRate
     }
@@ -77,14 +77,14 @@ public struct InjectionRecord {
 
 /// Advanced mock injector with configurable behaviors
 public class ConfigurableMockInjector: MockTextInjector {
-    public override var methodName: String { "ConfigurableMock" }
-    
+    override public var methodName: String { "ConfigurableMock" }
+
     // Advanced configuration
     public var failurePattern: FailurePattern = .never
     public var compatibilityPattern: CompatibilityPattern = .always
-    
+
     private var injectionCount = 0
-    
+
     public enum FailurePattern {
         case never
         case always
@@ -93,7 +93,7 @@ public class ConfigurableMockInjector: MockTextInjector {
         case random(probability: Double)
         case custom((Int, String) -> Bool) // (attemptNumber, text) -> shouldFail
     }
-    
+
     public enum CompatibilityPattern {
         case always
         case never
@@ -101,19 +101,19 @@ public class ConfigurableMockInjector: MockTextInjector {
         case afterNChecks(Int)
         case custom(() -> Bool)
     }
-    
-    public override func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void) {
+
+    override public func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void) {
         injectionCount += 1
-        
+
         // Determine if this injection should fail based on pattern
         shouldSucceed = !shouldFail(attemptNumber: injectionCount, text: text)
-        
+
         super.inject(text: text, completion: completion)
     }
-    
-    public override func isCompatibleWithCurrentContext() -> Bool {
+
+    override public func isCompatibleWithCurrentContext() -> Bool {
         compatibilityCheckCount += 1
-        
+
         switch compatibilityPattern {
         case .always:
             return true
@@ -127,7 +127,7 @@ public class ConfigurableMockInjector: MockTextInjector {
             return checker()
         }
     }
-    
+
     private func shouldFail(attemptNumber: Int, text: String) -> Bool {
         switch failurePattern {
         case .never:
@@ -144,8 +144,8 @@ public class ConfigurableMockInjector: MockTextInjector {
             return checker(attemptNumber, text)
         }
     }
-    
-    public override func reset() {
+
+    override public func reset() {
         super.reset()
         injectionCount = 0
         failurePattern = .never

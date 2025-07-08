@@ -4,7 +4,7 @@ import PackageDescription
 let package = Package(
     name: "VoiceType",
     platforms: [
-        .macOS(.v13)
+        .macOS(.v14)
     ],
     products: [
         .executable(
@@ -25,7 +25,7 @@ let package = Package(
         )
     ],
     dependencies: [
-        // No external dependencies - using only system frameworks
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0")
     ],
     targets: [
         // Main executable
@@ -66,7 +66,10 @@ let package = Package(
         // Concrete implementations
         .target(
             name: "VoiceTypeImplementations",
-            dependencies: ["VoiceTypeCore"],
+            dependencies: [
+                "VoiceTypeCore",
+                .product(name: "WhisperKit", package: "WhisperKit")
+            ],
             path: "Sources/Implementations",
             swiftSettings: [
                 .unsafeFlags(["-cross-module-optimization"], .when(configuration: .release))

@@ -15,38 +15,38 @@ import VoiceTypeImplementations
 @MainActor
 public class AppLifecycleManager: ObservableObject {
     // MARK: - Published Properties
-    
+
     /// Current initialization state
     @Published public var initializationState: InitializationState = .notStarted
-    
+
     /// Initialization progress (0.0 to 1.0)
     @Published public var initializationProgress: Double = 0.0
-    
+
     /// Current error if any
     @Published public var currentError: AppLifecycleError?
-    
+
     /// Whether this is the first launch
     @Published public var isFirstLaunch: Bool = false
-    
+
     /// Whether the app needs onboarding
     @Published public var needsOnboarding: Bool = false
-    
+
     /// Settings migration status
     @Published public var settingsMigrationStatus: MigrationStatus = .notNeeded
-    
+
     // MARK: - Private Properties
-    
+
     private let logger = Logger(subsystem: "com.voicetype.app", category: "AppLifecycle")
     private let fileManager = FileManager.default
     private let modelManager: ModelManager
-    
+
     // Settings version tracking
     private let currentSettingsVersion = 3  // Updated to match migration system
     private let settingsVersionKey = "settingsVersion"
     private let hasLaunchedBeforeKey = "hasLaunchedBefore"
-    
+
     // MARK: - Initialization State
-    
+
     public enum InitializationState: String {
         case notStarted = "Not Started"
         case checkingEnvironment = "Checking Environment"
@@ -58,101 +58,100 @@ public class AppLifecycleManager: ObservableObject {
         case completed = "Completed"
         case failed = "Failed"
     }
-    
+
     public enum MigrationStatus {
         case notNeeded
         case inProgress
         case completed
         case failed(Error)
     }
-    
+
     // MARK: - Initialization
-    
+
     public init(modelManager: ModelManager? = nil) {
         self.modelManager = modelManager ?? ModelManager()
-        
+
         // Check first launch status
         self.isFirstLaunch = !UserDefaults.standard.bool(forKey: hasLaunchedBeforeKey)
         self.needsOnboarding = isFirstLaunch
     }
-    
+
     // MARK: - Public Methods
-    
+
     /// Initialize the application on launch
     public func initializeApp() async {
         logger.info("Starting app initialization...")
         initializationState = .checkingEnvironment
         initializationProgress = 0.0
-        
+
         do {
             // Step 1: Check environment and create directories
             try await setupEnvironment()
             initializationProgress = 0.2
-            
+
             // Step 2: Load and migrate settings
             try await loadAndMigrateSettings()
             initializationProgress = 0.4
-            
+
             // Step 3: Validate models
             try await validateModels()
             initializationProgress = 0.6
-            
+
             // Step 4: Check permissions
             await checkPermissions()
             initializationProgress = 0.8
-            
+
             // Step 5: Complete initialization
             await completeInitialization()
             initializationProgress = 1.0
-            
+
             initializationState = .completed
             logger.info("App initialization completed successfully")
-            
         } catch {
             logger.error("App initialization failed: \(error.localizedDescription)")
             currentError = AppLifecycleError.initializationFailed(error)
             initializationState = .failed
         }
     }
-    
+
     /// Handle app termination
     public func handleAppTermination() {
         logger.info("App is terminating...")
-        
+
         // Save current state
         saveAppState()
-        
+
         // Clean up temporary files
         cleanupTempFiles()
-        
+
         // Stop any background tasks
         stopBackgroundTasks()
     }
-    
+
     /// Handle app entering background
     public func handleEnterBackground() {
         logger.info("App entering background...")
-        
+
         // Save current state
         saveAppState()
-        
+
         // Pause non-essential operations
         pauseNonEssentialOperations()
     }
-    
+
     /// Handle app entering foreground
     public func handleEnterForeground() {
         logger.info("App entering foreground...")
-        
+
         // Resume operations
         resumeOperations()
-        
+
         // Check for updates or changes
         Task {
             await checkForUpdates()
         }
     }
-    
+
     /// Mark first launch as completed
     public func completeFirstLaunch() {
         UserDefaults.standard.set(true, forKey: hasLaunchedBeforeKey)
@@ -160,31 +159,31 @@ public class AppLifecycleManager: ObservableObject {
         needsOnboarding = false
         logger.info("First launch completed")
     }
-    
+
     // MARK: - Private Methods - Setup
-    
+
     private func setupEnvironment() async throws {
         initializationState = .checkingEnvironment
         logger.info("Setting up environment...")
-        
+
         // Check system requirements
         guard ProcessInfo.processInfo.operatingSystemVersion.majorVersion >= 13 else {
             throw AppLifecycleError.unsupportedOS
         }
-        
+
         initializationState = .creatingDirectories
         logger.info("Creating required directories...")
-        
+
         // Create required directories
         try createRequiredDirectories()
-        
+
         // Set up logging
         setupLogging()
-        
+
         // Configure app settings
         configureAppSettings()
     }
-    
+
     private func createRequiredDirectories() throws {
         let directories = [
             try fileManager.voiceTypeDirectory,
@@ -192,62 +191,62 @@ public class AppLifecycleManager: ObservableObject {
             try fileManager.downloadsDirectory,
             try fileManager.cacheDirectory
         ]
-        
+
         for directory in directories {
             if !fileManager.fileExists(atPath: directory.path) {
                 try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
                 logger.info("Created directory: \(directory.path)")
             }
         }
-        
+
         // Create logs directory
         let logsDir = try fileManager.voiceTypeDirectory.appendingPathComponent("logs", isDirectory: true)
         if !fileManager.fileExists(atPath: logsDir.path) {
             try fileManager.createDirectory(at: logsDir, withIntermediateDirectories: true)
         }
     }
-    
+
     private func setupLogging() {
         // Configure unified logging
         // This is already handled by the Logger instance
     }
-    
+
     private func configureAppSettings() {
         // Configure app-wide settings
         NSApp.appearance = NSAppearance(named: .aqua)
     }
-    
+
     // MARK: - Private Methods - Settings
-    
+
     private func loadAndMigrateSettings() async throws {
         initializationState = .loadingSettings
         logger.info("Loading settings...")
-        
+
         // Check settings version
         let savedVersion = UserDefaults.standard.integer(forKey: settingsVersionKey)
-        
+
         if savedVersion < currentSettingsVersion {
             initializationState = .migratingSettings
             settingsMigrationStatus = .inProgress
-            
+
             try await migrateSettings(from: savedVersion, to: currentSettingsVersion)
-            
+
             settingsMigrationStatus = .completed
             UserDefaults.standard.set(currentSettingsVersion, forKey: settingsVersionKey)
         }
-        
+
         // Validate settings
         try validateSettings()
     }
-    
+
     private func migrateSettings(from oldVersion: Int, to newVersion: Int) async throws {
         logger.info("Migrating settings from version \(oldVersion) to \(newVersion)")
-        
+
         let defaults = UserDefaults.standard
-        
+
         // Run migrations in sequence
         var currentVersion = oldVersion
-        
+
         while currentVersion < newVersion {
             switch currentVersion {
             case 0:
@@ -264,7 +263,7 @@ public class AppLifecycleManager: ObservableObject {
                 currentVersion = newVersion
             }
         }
-        
+
         // Validate migrated settings
         let errors = SettingsMigration.validateSettings(defaults: defaults)
         if !errors.isEmpty {
@@ -272,70 +271,70 @@ public class AppLifecycleManager: ObservableObject {
             // Continue with defaults for invalid settings
         }
     }
-    
+
     private func setDefaultSettings() {
         // Set default values if not already set
         if UserDefaults.standard.object(forKey: "selectedModel") == nil {
             UserDefaults.standard.set("fast", forKey: "selectedModel")
         }
-        
+
         if UserDefaults.standard.object(forKey: "globalHotkey") == nil {
             UserDefaults.standard.set("ctrl+shift+v", forKey: "globalHotkey")
         }
-        
+
         if UserDefaults.standard.object(forKey: "showMenuBarIcon") == nil {
             UserDefaults.standard.set(true, forKey: "showMenuBarIcon")
         }
-        
+
         if UserDefaults.standard.object(forKey: "maxRecordingDuration") == nil {
             UserDefaults.standard.set(5.0, forKey: "maxRecordingDuration")
         }
-        
+
         if UserDefaults.standard.object(forKey: "autoStartAtLogin") == nil {
             UserDefaults.standard.set(false, forKey: "autoStartAtLogin")
         }
     }
-    
+
     private func validateSettings() throws {
         // Validate critical settings
         let model = UserDefaults.standard.string(forKey: "selectedModel") ?? ""
         guard !model.isEmpty else {
             throw AppLifecycleError.invalidSettings("No model selected")
         }
-        
+
         let hotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? ""
         guard !hotkey.isEmpty else {
             throw AppLifecycleError.invalidSettings("No hotkey configured")
         }
     }
-    
+
     // MARK: - Private Methods - Models
-    
+
     private func validateModels() async throws {
         initializationState = .validatingModels
         logger.info("Validating models...")
-        
+
         // Check for embedded fast model
         let embeddedModelURL = Bundle.main.url(forResource: "whisper-fast", withExtension: "mlpackage")
         if embeddedModelURL == nil {
             logger.warning("Embedded fast model not found in bundle")
         }
-        
+
         // Get installed models
         await modelManager.refreshInstalledModels()
         let installedModels = modelManager.installedModels
         logger.info("Found \(installedModels.count) installed models")
-        
+
         // Check if we have at least one working model
         let selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "fast"
         var hasWorkingModel = false
-        
+
         if selectedModel == "fast" && embeddedModelURL != nil {
             hasWorkingModel = true
         } else {
             hasWorkingModel = installedModels.contains { $0.type.rawValue.lowercased().contains(selectedModel) }
         }
-        
+
         if !hasWorkingModel {
             // Try to fallback to any available model
             if embeddedModelURL != nil {
@@ -349,41 +348,41 @@ public class AppLifecycleManager: ObservableObject {
                 throw AppLifecycleError.noModelsAvailable
             }
         }
-        
+
         // Clean up partial downloads
         try fileManager.cleanupPartialDownloads()
     }
-    
+
     // MARK: - Private Methods - Permissions
-    
+
     private func checkPermissions() async {
         initializationState = .checkingPermissions
         logger.info("Checking permissions...")
-        
+
         // Permission checking is handled by PermissionManager
         // This is just a placeholder for the initialization flow
     }
-    
+
     // MARK: - Private Methods - Completion
-    
+
     private func completeInitialization() async {
         logger.info("Completing initialization...")
-        
+
         // Clean up old cache files
         try? fileManager.cleanupCache(olderThan: 7)
-        
+
         // Set up crash reporting (if enabled)
         setupCrashReporting()
-        
+
         // Schedule periodic maintenance
         schedulePeriodicMaintenance()
     }
-    
+
     private func setupCrashReporting() {
         // Placeholder for crash reporting setup
         // Could integrate with services like Sentry or Crashlytics
     }
-    
+
     private func schedulePeriodicMaintenance() {
         // Schedule daily maintenance tasks
         Timer.scheduledTimer(withTimeInterval: 86400, repeats: true) { _ in
@@ -392,27 +391,27 @@ public class AppLifecycleManager: ObservableObject {
             }
         }
     }
-    
+
     private func performMaintenance() {
         logger.info("Performing periodic maintenance...")
-        
+
         // Clean up old cache files
         try? fileManager.cleanupCache(olderThan: 7)
-        
+
         // Clean up old log files
         cleanupOldLogs()
-        
+
         // Check disk space
         checkDiskSpace()
     }
-    
+
     // MARK: - Private Methods - State Management
-    
+
     private func saveAppState() {
         // Save current app state
         UserDefaults.standard.synchronize()
     }
-    
+
     private func cleanupTempFiles() {
         // Clean up temporary files
         do {
@@ -428,33 +427,33 @@ public class AppLifecycleManager: ObservableObject {
             logger.error("Failed to cleanup temp files: \(error.localizedDescription)")
         }
     }
-    
+
     private func stopBackgroundTasks() {
         // Stop any background download tasks
         URLSession.shared.invalidateAndCancel()
     }
-    
+
     private func pauseNonEssentialOperations() {
         // Pause operations that aren't needed in background
     }
-    
+
     private func resumeOperations() {
         // Resume paused operations
     }
-    
+
     private func checkForUpdates() async {
         // Check for app updates
         // This would connect to your update server
     }
-    
+
     private func cleanupOldLogs() {
         do {
             let logsDir = try fileManager.voiceTypeDirectory.appendingPathComponent("logs", isDirectory: true)
             let contents = try fileManager.contentsOfDirectory(at: logsDir,
                                                               includingPropertiesForKeys: [.contentModificationDateKey])
-            
+
             let cutoffDate = Calendar.current.date(byAdding: .day, value: -30, to: Date())!
-            
+
             for file in contents {
                 let resourceValues = try file.resourceValues(forKeys: [.contentModificationDateKey])
                 if let modificationDate = resourceValues.contentModificationDate,
@@ -466,12 +465,12 @@ public class AppLifecycleManager: ObservableObject {
             logger.error("Failed to cleanup old logs: \(error.localizedDescription)")
         }
     }
-    
+
     private func checkDiskSpace() {
         let availableSpace = fileManager.availableDiskSpace
         let formatter = ByteCountFormatter()
         let availableStr = formatter.string(fromByteCount: availableSpace)
-        
+
         if availableSpace < 500_000_000 { // Less than 500MB
             logger.warning("Low disk space: \(availableStr)")
             // Could show a notification to the user
@@ -489,7 +488,7 @@ public enum AppLifecycleError: LocalizedError {
     case invalidSettings(String)
     case noModelsAvailable
     case permissionDenied(String)
-    
+
     public var errorDescription: String? {
         switch self {
         case .initializationFailed(let error):
@@ -508,7 +507,7 @@ public enum AppLifecycleError: LocalizedError {
             return "Permission denied: \(permission)"
         }
     }
-    
+
     public var recoverySuggestion: String? {
         switch self {
         case .initializationFailed:

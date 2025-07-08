@@ -6,9 +6,8 @@ import Darwin
 
 /// Test utilities and helpers for integration tests
 public final class TestUtilities {
-    
     // MARK: - Audio Test Data
-    
+
     /// Generate test audio data with specified duration and characteristics
     public static func generateTestAudio(
         duration: TimeInterval,
@@ -18,28 +17,28 @@ public final class TestUtilities {
     ) -> AudioData {
         let sampleCount = Int(duration * sampleRate)
         var samples: [Int16] = []
-        
+
         for i in 0..<sampleCount {
             let time = Double(i) / sampleRate
             let value = amplitude * Float(sin(2.0 * .pi * frequency * time))
             let int16Value = Int16(value * Float(Int16.max))
             samples.append(int16Value)
         }
-        
+
         return AudioData(samples: samples, sampleRate: sampleRate, channelCount: 1)
     }
-    
+
     /// Load test audio file from bundle
     public static func loadTestAudioFile(named fileName: String) -> AudioData? {
         guard Bundle(for: TestUtilities.self).url(forResource: fileName, withExtension: "wav") != nil else {
             return nil
         }
-        
+
         // In real implementation, would parse WAV file
         // For tests, return mock data
         return generateTestAudio(duration: 3.0)
     }
-    
+
     /// Generate noisy audio data
     public static func generateNoisyAudio(
         duration: TimeInterval,
@@ -47,19 +46,19 @@ public final class TestUtilities {
     ) -> AudioData {
         let cleanAudio = generateTestAudio(duration: duration)
         var noisySamples = cleanAudio.samples
-        
+
         for i in 0..<noisySamples.count {
             let currentValue = Float(noisySamples[i]) / Float(Int16.max)
             let noise = Float.random(in: -noiseLevel...noiseLevel)
             let newValue = min(max(currentValue + noise, -1.0), 1.0)
             noisySamples[i] = Int16(newValue * Float(Int16.max))
         }
-        
+
         return AudioData(samples: noisySamples, sampleRate: cleanAudio.sampleRate, channelCount: cleanAudio.channelCount)
     }
-    
+
     // MARK: - Performance Measurement
-    
+
     /// Measure execution time of an async operation
     public static func measureTime<T>(
         operation: () async throws -> T
@@ -69,30 +68,30 @@ public final class TestUtilities {
         let elapsed = Date().timeIntervalSince(start)
         return (result, elapsed)
     }
-    
+
     /// Performance metrics collector
     public class PerformanceCollector {
         private var metrics: [String: [TimeInterval]] = [:]
-        
+
         public func record(metric: String, time: TimeInterval) {
             if metrics[metric] == nil {
                 metrics[metric] = []
             }
             metrics[metric]?.append(time)
         }
-        
+
         public func average(for metric: String) -> TimeInterval? {
             guard let times = metrics[metric], !times.isEmpty else { return nil }
             return times.reduce(0, +) / Double(times.count)
         }
-        
+
         public func percentile(for metric: String, percentile: Double) -> TimeInterval? {
             guard let times = metrics[metric], !times.isEmpty else { return nil }
             let sorted = times.sorted()
             let index = Int(Double(sorted.count - 1) * percentile / 100.0)
             return sorted[index]
         }
-        
+
         public func report() -> String {
             var report = "Performance Report:\n"
             for (metric, _) in metrics.sorted(by: { $0.key < $1.key }) {
@@ -108,9 +107,9 @@ public final class TestUtilities {
             return report
         }
     }
-    
+
     // MARK: - Mock Data Generators
-    
+
     /// Generate mock transcription result
     public static func mockTranscriptionResult(
         text: String = "This is a test transcription",
@@ -126,7 +125,7 @@ public final class TestUtilities {
                 confidence: confidence
             )
         }
-        
+
         return TranscriptionResult(
             text: text,
             confidence: confidence,
@@ -134,14 +133,14 @@ public final class TestUtilities {
             language: language
         )
     }
-    
+
     /// Generate target application for testing
     public static func mockTargetApplication(
         bundleId: String = "com.test.app",
         name: String = "Test App",
         supportsInput: Bool = true
     ) -> TargetApplication {
-        return TargetApplication(
+        TargetApplication(
             bundleId: bundleId,
             name: name,
             processId: pid_t(12345), // Mock process ID
@@ -149,9 +148,9 @@ public final class TestUtilities {
             bundlePath: URL(fileURLWithPath: "/Applications/\(name).app")
         )
     }
-    
+
     // MARK: - State Verification
-    
+
     /// Wait for a condition to become true
     public static func waitFor(
         condition: @escaping () async -> Bool,
@@ -159,17 +158,17 @@ public final class TestUtilities {
         interval: TimeInterval = 0.1
     ) async throws {
         let start = Date()
-        
+
         while Date().timeIntervalSince(start) < timeout {
             if await condition() {
                 return
             }
             try await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
         }
-        
+
         throw TestError.timeout("Condition not met within \(timeout) seconds")
     }
-    
+
     /// Wait for coordinator to reach specific state
     public static func waitForState(
         _ coordinator: VoiceTypeCoordinator,
@@ -181,16 +180,16 @@ public final class TestUtilities {
             timeout: timeout
         )
     }
-    
+
     // MARK: - Memory Testing
-    
+
     /// Track memory usage during operation
     public static func trackMemoryUsage<T>(
         during operation: () async throws -> T
     ) async throws -> (result: T, peakMemory: Int64) {
         let initialMemory = getMemoryUsage()
         var peakMemory = initialMemory
-        
+
         let monitorTask = Task {
             while !Task.isCancelled {
                 let current = getMemoryUsage()
@@ -198,17 +197,17 @@ public final class TestUtilities {
                 try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
             }
         }
-        
+
         let result = try await operation()
         monitorTask.cancel()
-        
+
         return (result, peakMemory - initialMemory)
     }
-    
+
     private static func getMemoryUsage() -> Int64 {
         var info = mach_task_basic_info()
         var count = mach_msg_type_number_t(MemoryLayout<mach_task_basic_info>.size) / 4
-        
+
         let result = withUnsafeMutablePointer(to: &info) {
             $0.withMemoryRebound(to: integer_t.self, capacity: 1) {
                 task_info(mach_task_self_,
@@ -217,33 +216,33 @@ public final class TestUtilities {
                          &count)
             }
         }
-        
+
         return result == KERN_SUCCESS ? Int64(info.resident_size) : 0
     }
-    
+
     // MARK: - File System Helpers
-    
+
     /// Create temporary directory for tests
     public static func createTempDirectory() throws -> URL {
         let tempDir = FileManager.default.temporaryDirectory
             .appendingPathComponent("VoiceTypeTests")
             .appendingPathComponent(UUID().uuidString)
-        
+
         try FileManager.default.createDirectory(
             at: tempDir,
             withIntermediateDirectories: true
         )
-        
+
         return tempDir
     }
-    
+
     /// Clean up test files
     public static func cleanupDirectory(_ url: URL) {
         try? FileManager.default.removeItem(at: url)
     }
-    
+
     // MARK: - Network Simulation
-    
+
     /// Simulate network conditions
     public class NetworkSimulator {
         public enum Condition {
@@ -252,29 +251,29 @@ public final class TestUtilities {
             case failure(after: TimeInterval)
             case intermittent(failureRate: Double)
         }
-        
+
         private var condition: Condition = .normal
         private var requestCount = 0
-        
+
         public func setCondition(_ condition: Condition) {
             self.condition = condition
             requestCount = 0
         }
-        
+
         public func simulateRequest() async throws {
             requestCount += 1
-            
+
             switch condition {
             case .normal:
                 return
-                
+
             case .slow(let latency):
                 try await Task.sleep(nanoseconds: UInt64(latency * 1_000_000_000))
-                
+
             case .failure(let after):
                 try await Task.sleep(nanoseconds: UInt64(after * 1_000_000_000))
                 throw VoiceTypeError.networkUnavailable
-                
+
             case .intermittent(let failureRate):
                 if Double.random(in: 0...1) < failureRate {
                     throw VoiceTypeError.networkUnavailable
@@ -290,7 +289,7 @@ enum TestError: LocalizedError {
     case timeout(String)
     case unexpectedState(String)
     case validationFailed(String)
-    
+
     var errorDescription: String? {
         switch self {
         case .timeout(let message):
@@ -321,7 +320,7 @@ extension XCTestCase {
             XCTFail("Operation failed to complete: \(error)", file: file, line: line)
         }
     }
-    
+
     /// Run async operation with timeout
     func withTimeout<T>(
         seconds: TimeInterval,
@@ -331,12 +330,12 @@ extension XCTestCase {
             group.addTask {
                 try await operation()
             }
-            
+
             group.addTask {
                 try await Task.sleep(nanoseconds: UInt64(seconds * 1_000_000_000))
                 throw TestError.timeout("Operation timed out after \(seconds) seconds")
             }
-            
+
             let result = try await group.next()!
             group.cancelAll()
             return result

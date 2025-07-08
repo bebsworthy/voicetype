@@ -13,20 +13,20 @@ import Foundation
 public protocol AudioProcessor {
     /// Indicates whether the processor is currently recording audio.
     var isRecording: Bool { get }
-    
+
     /// Stream that emits audio level changes during recording (0.0 to 1.0).
     /// Used for visual feedback of recording levels.
     var audioLevelChanged: AsyncStream<Float> { get }
-    
+
     /// Stream that emits recording state changes.
     /// Used to update UI and coordinate app state.
     var recordingStateChanged: AsyncStream<RecordingState> { get }
-    
+
     /// Starts recording audio from the configured input device.
     /// - Throws: AudioError if microphone permission is denied or audio setup fails
     /// - Note: Recording will automatically stop after 5 seconds unless stopped manually
     func startRecording() async throws
-    
+
     /// Stops recording and returns the captured audio data.
     /// - Returns: AudioData containing the recorded samples
     /// - Note: Safe to call even if recording has already stopped
@@ -46,19 +46,19 @@ public protocol AudioPreprocessor {
 public struct AudioProcessorConfiguration {
     /// Sample rate for audio recording (Hz)
     public let sampleRate: Double
-    
+
     /// Number of audio channels (1 for mono, 2 for stereo)
     public let channelCount: Int
-    
+
     /// Audio format bit depth
     public let bitDepth: Int
-    
+
     /// Buffer size in samples
     public let bufferSize: Int
-    
+
     /// Maximum recording duration in seconds
     public let maxRecordingDuration: TimeInterval
-    
+
     /// Default configuration for VoiceType MVP (16kHz mono)
     public static let voiceTypeMVP = AudioProcessorConfiguration(
         sampleRate: 16000,
@@ -67,7 +67,7 @@ public struct AudioProcessorConfiguration {
         bufferSize: 1024,
         maxRecordingDuration: 5.0
     )
-    
+
     public init(sampleRate: Double, channelCount: Int, bitDepth: Int, bufferSize: Int, maxRecordingDuration: TimeInterval) {
         self.sampleRate = sampleRate
         self.channelCount = channelCount
@@ -86,7 +86,7 @@ public enum AudioProcessorError: LocalizedError {
     case audioSessionError(String)
     case deviceDisconnected
     case systemError(String)
-    
+
     public var errorDescription: String? {
         switch self {
         case .permissionDenied:

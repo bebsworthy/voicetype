@@ -5,13 +5,13 @@ import Foundation
 public protocol Transcriber {
     /// Information about the currently loaded model.
     var modelInfo: ModelInfo { get }
-    
+
     /// Languages supported by the current model.
     var supportedLanguages: [Language] { get }
-    
+
     /// Whether a model is currently loaded and ready for transcription.
     var isModelLoaded: Bool { get }
-    
+
     /// Transcribes audio data to text using the loaded ML model.
     /// - Parameters:
     ///   - audio: The audio data to transcribe (should be 16kHz mono PCM)
@@ -19,7 +19,7 @@ public protocol Transcriber {
     /// - Returns: TranscriptionResult containing the transcribed text and metadata
     /// - Throws: TranscriptionError if model is not loaded or transcription fails
     func transcribe(_ audio: AudioData, language: Language?) async throws -> TranscriptionResult
-    
+
     /// Loads a specific model type for transcription.
     /// - Parameter type: The model type to load (fast, balanced, or accurate)
     /// - Throws: ModelError if model file is not found or loading fails
@@ -34,7 +34,7 @@ public enum TranscriberError: LocalizedError {
     case transcriptionFailed(reason: String)
     case unsupportedLanguage(Language)
     case modelLoadingFailed(String)
-    
+
     public var errorDescription: String? {
         switch self {
         case .modelNotLoaded:
