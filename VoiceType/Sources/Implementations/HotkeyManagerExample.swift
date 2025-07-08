@@ -71,7 +71,7 @@ class HotkeyManagerExample {
             try hotkeyManager.registerHotkey(
                 identifier: "custom.test",
                 keyCombo: "cmd+opt+t"
-            )                { print("Custom hotkey triggered!") }
+            ) { print("Custom hotkey triggered!") }
         } catch {
             print("Failed to register hotkey: \(error)")
         }
@@ -273,9 +273,9 @@ struct HotkeyConfigurationView: View {
             try hotkeyManager.registerHotkey(
                 identifier: selectedPreset.identifier,
                 keyCombo: customKeyCombo.isEmpty ? selectedPreset.defaultKeyCombo : customKeyCombo
-            )                {
+            ) {
                     print("\(selectedPreset.description) triggered")
-                }
+            }
             customKeyCombo = ""
             validationError = nil
         } catch {
@@ -312,9 +312,9 @@ class AppDelegateExample: NSObject, NSApplicationDelegate {
             try hotkeyManager.registerHotkey(
                 identifier: "quick_insert",
                 keyCombo: "cmd+shift+space"
-            )                { [weak self] in
+            ) { [weak self] in
                     self?.quickInsertTranscription()
-                }
+            }
         } catch {
             print("Failed to setup hotkeys: \(error)")
         }

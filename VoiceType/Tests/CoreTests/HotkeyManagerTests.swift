@@ -39,7 +39,7 @@ class HotkeyManagerTests: XCTestCase {
                 try hotkeyManager.registerHotkey(
                     identifier: "test.\(index)",
                     keyCombo: combo
-                )                    {}
+                ) {}
                 // If registration succeeds, the combo is valid
             } catch {
                 XCTFail("'\(combo)' should be valid but got error: \(error)")
@@ -64,7 +64,7 @@ class HotkeyManagerTests: XCTestCase {
                 try hotkeyManager.registerHotkey(
                     identifier: "test.invalid",
                     keyCombo: combo
-                )                    {}
+                ) {}
                 XCTFail("'\(combo)' should be invalid but was accepted")
             } catch {
                 // Expected error for invalid combo
@@ -89,7 +89,7 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test.hotkey",
             keyCombo: "cmd+shift+t"
-        )            {}
+        ) {}
 
         wait(for: [expectation], timeout: 1.0)
     }
@@ -99,14 +99,14 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test.hotkey",
             keyCombo: "cmd+shift+t"
-        )            {}
+        ) {}
 
         // Try to register with same identifier but different combo
         XCTAssertNoThrow(
             try hotkeyManager.registerHotkey(
                 identifier: "test.hotkey",
                 keyCombo: "cmd+shift+r"
-            )                {},
+            ) {},
             "Should allow updating hotkey with same identifier"
         )
 
@@ -119,14 +119,14 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test.hotkey1",
             keyCombo: "cmd+shift+t"
-        )            {}
+        ) {}
 
         // Try to register different identifier with same combo
         XCTAssertThrowsError(
             try hotkeyManager.registerHotkey(
                 identifier: "test.hotkey2",
                 keyCombo: "cmd+shift+t"
-            )                {}
+            ) {}
         ) { error in
             guard case HotkeyError.conflictingHotkey = error else {
                 XCTFail("Expected conflicting hotkey error")
@@ -142,7 +142,7 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test.hotkey",
             keyCombo: "cmd+shift+t"
-        )            {}
+        ) {}
 
         // Update it
         try hotkeyManager.updateHotkey(
@@ -175,7 +175,7 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test.hotkey",
             keyCombo: "cmd+shift+t"
-        )            {}
+        ) {}
 
         // Verify it exists
         XCTAssertNotNil(hotkeyManager.registeredHotkeys["test.hotkey"])
@@ -225,7 +225,7 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test",
             keyCombo: "cmd+shift+a"
-        )            {}
+        ) {}
 
         let displayString = hotkeyManager.getHotkeyDescription(for: "test")
         XCTAssertNotNil(displayString)
@@ -243,7 +243,7 @@ class HotkeyManagerTests: XCTestCase {
         try hotkeyManager.registerHotkey(
             identifier: "test1",
             keyCombo: combos[0]
-        )            {}
+        ) {}
 
         // Others should conflict
         for i in 1..<combos.count {
@@ -251,7 +251,7 @@ class HotkeyManagerTests: XCTestCase {
                 try hotkeyManager.registerHotkey(
                     identifier: "test\(i + 1)",
                     keyCombo: combos[i]
-                )                    {},
+                ) {},
                 "Should detect conflict regardless of case"
             )
         }
@@ -270,14 +270,14 @@ class HotkeyManagerTests: XCTestCase {
             try hotkeyManager.registerHotkey(
                 identifier: "test.\(primary)",
                 keyCombo: primary
-            )                {}
+            ) {}
 
             // Alternate should conflict
             XCTAssertThrowsError(
                 try hotkeyManager.registerHotkey(
                     identifier: "test.\(alternate)",
                     keyCombo: alternate
-                )                    {},
+                ) {},
                 "'\(primary)' and '\(alternate)' should be treated as the same"
             )
 
@@ -302,7 +302,7 @@ class HotkeyManagerTests: XCTestCase {
                     try hotkeyManager.registerHotkey(
                         identifier: "perf.test.\(i)",
                         keyCombo: "\(modifiers[modifierIndex])+\(keys[keyIndex])"
-                    )                        {}
+                    ) {}
                 }
 
                 // Clean up
