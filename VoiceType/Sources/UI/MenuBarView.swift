@@ -6,9 +6,11 @@ import AppKit
 /// Main menu bar interface for VoiceType
 public struct MenuBarView: View {
     @ObservedObject var coordinator: VoiceTypeCoordinator
+    let openSettingsAction: (() -> Void)?
 
-    public init(coordinator: VoiceTypeCoordinator) {
+    public init(coordinator: VoiceTypeCoordinator, openSettingsAction: (() -> Void)? = nil) {
         self.coordinator = coordinator
+        self.openSettingsAction = openSettingsAction
     }
 
     public var body: some View {
@@ -134,7 +136,14 @@ public struct MenuBarView: View {
 
     private var bottomActionsSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SettingsLink {
+            Button(action: {
+                if let openSettings = openSettingsAction {
+                    openSettings()
+                } else {
+                    // Fallback
+                    NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
+                }
+            }) {
                 HStack {
                     Image(systemName: "gear")
                     Text("Settings...")

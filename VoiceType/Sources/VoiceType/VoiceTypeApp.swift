@@ -22,7 +22,9 @@ struct VoiceTypeApp: App {
     var body: some Scene {
         // Menu Bar Extra
         MenuBarExtra {
-            MenuBarView(coordinator: coordinator)
+            MenuBarView(coordinator: coordinator, openSettingsAction: {
+                NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
+            })
                 .task {
                     guard !isInitialized else { return }
                     isInitialized = true
