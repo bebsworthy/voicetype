@@ -209,6 +209,137 @@ public final class WhisperKitModelManager: ObservableObject {
 
         return downloadedModels
     }
+    
+    // MARK: - Dynamic Model Support
+    
+    /// Check if a dynamic WhisperKit model is downloaded
+    public func isDynamicModelDownloaded(modelId: String) -> Bool {
+        // Check if we have a stored WhisperKit location for this model
+        if let storedPath = UserDefaults.standard.string(forKey: "WhisperKitModel_\(modelId)"),
+           fileManager.fileExists(atPath: storedPath) {
+            let url = URL(fileURLWithPath: storedPath)
+            return verifyWhisperKitModel(at: url)
+        }
+        
+        // Check default location
+        let modelPath = modelStorage.appendingPathComponent(modelId, isDirectory: true)
+        if fileManager.fileExists(atPath: modelPath.path) {
+            return verifyWhisperKitModel(at: modelPath)
+        }
+        
+        return false
+    }
+    
+    /// Download a dynamic WhisperKit model
+    public func downloadDynamicModel(model: WhisperKitModel) async throws {
+        print("🔽 WhisperKitModelManager: Starting download for dynamic model: \(model.displayName)")
+        logger.info("Starting download for dynamic model: \(model.displayName)")
+        
+        // Cancel any existing download
+        downloadTask?.cancel()
+        
+        // Reset progress
+        downloadProgress = 0.0
+        isDownloading = true
+        currentDownloadTask = model.displayName
+        
+        defer {
+            isDownloading = false
+            currentDownloadTask = nil
+            downloadProgress = 0.0
+        }
+        
+        // Create a download task
+        downloadTask = Task {
+            try await performModelDownload(modelName: model.id, modelType: nil)
+        }
+        
+        do {
+            try await downloadTask?.value
+            print("✅ WhisperKitModelManager: Successfully downloaded model: \(model.displayName)")
+            logger.info("Successfully downloaded model: \(model.displayName)")
+        } catch {
+            print("❌ WhisperKitModelManager: Failed to download model: \(error)")
+            logger.error("Failed to download model: \(error.localizedDescription)")
+            throw error
+        }
+    }
+    
+    /// Delete a dynamic WhisperKit model
+    public func deleteDynamicModel(modelId: String) async throws {
+        print("🗑️ WhisperKitModelManager: Deleting dynamic model \(modelId)")
+        
+        // Check if we have a stored WhisperKit location
+        if let storedPath = UserDefaults.standard.string(forKey: "WhisperKitModel_\(modelId)"),
+           fileManager.fileExists(atPath: storedPath) {
+            print("📁 Deleting WhisperKit model at: \(storedPath)")
+            try fileManager.removeItem(atPath: storedPath)
+            UserDefaults.standard.removeObject(forKey: "WhisperKitModel_\(modelId)")
+            print("✅ Model deleted successfully")
+            return
+        }
+        
+        // Check default location
+        let modelPath = modelStorage.appendingPathComponent(modelId, isDirectory: true)
+        
+        if fileManager.fileExists(atPath: modelPath.path) {
+            print("📁 Deleting model at default location: \(modelPath.path)")
+            try fileManager.removeItem(at: modelPath)
+            print("✅ Model deleted successfully")
+        } else {
+            print("❌ Model not found")
+            throw WhisperKitModelError.dynamicModelNotFound(modelId: modelId)
+        }
+    }
+    
+    /// Get the file path for a downloaded dynamic model
+    public func getDynamicModelPath(modelId: String) -> URL? {
+        // First check if we have a stored WhisperKit location
+        if let storedPath = UserDefaults.standard.string(forKey: "WhisperKitModel_\(modelId)"),
+           fileManager.fileExists(atPath: storedPath) {
+            let url = URL(fileURLWithPath: storedPath)
+            if verifyWhisperKitModel(at: url) {
+                return url
+            }
+        }
+        
+        // Otherwise check our default location
+        let defaultPath = modelStorage.appendingPathComponent(modelId, isDirectory: true)
+        if fileManager.fileExists(atPath: defaultPath.path) {
+            return defaultPath
+        }
+        
+        return nil
+    }
+    
+    /// Get all downloaded dynamic models
+    public func getDownloadedDynamicModels() -> [String] {
+        var downloadedModels: [String] = []
+        
+        // Check UserDefaults for all WhisperKitModel_ keys
+        for (key, value) in UserDefaults.standard.dictionaryRepresentation() {
+            if key.hasPrefix("WhisperKitModel_"),
+               let path = value as? String,
+               fileManager.fileExists(atPath: path) {
+                let modelId = String(key.dropFirst("WhisperKitModel_".count))
+                downloadedModels.append(modelId)
+            }
+        }
+        
+        // Also check default location
+        if let contents = try? fileManager.contentsOfDirectory(at: modelStorage, includingPropertiesForKeys: nil) {
+            for url in contents {
+                if url.hasDirectoryPath {
+                    let modelId = url.lastPathComponent
+                    if !downloadedModels.contains(modelId) && verifyWhisperKitModel(at: url) {
+                        downloadedModels.append(modelId)
+                    }
+                }
+            }
+        }
+        
+        return downloadedModels
+    }
 
     /// Get the size of a downloaded model in bytes
     public func getModelSize(modelType: ModelType) -> Int64? {
@@ -403,7 +534,7 @@ public final class WhisperKitModelManager: ObservableObject {
 
     // MARK: - Private Methods
 
-    private func performModelDownload(modelName: String, modelType: ModelType) async throws {
+    private func performModelDownload(modelName: String, modelType: ModelType?) async throws {
         print("🔧 performModelDownload: Using WhisperKit's built-in download for \(modelName)")
         logger.debug("Using WhisperKit's built-in download system")
         
@@ -479,7 +610,11 @@ public final class WhisperKitModelManager: ObservableObject {
             print("❌ Error details: \(String(describing: error))")
             logger.error("WhisperKit download failed: \(error)")
             
-            throw WhisperKitModelError.downloadFailed(modelType: modelType, underlyingError: error)
+            if let modelType = modelType {
+                throw WhisperKitModelError.downloadFailed(modelType: modelType, underlyingError: error)
+            } else {
+                throw WhisperKitModelError.dynamicModelDownloadFailed(modelId: modelName, underlyingError: error)
+            }
         }
     }
 
@@ -540,6 +675,8 @@ public enum WhisperKitModelError: LocalizedError {
     case downloadFailed(modelType: ModelType, underlyingError: Error)
     case invalidModelPath
     case verificationFailed(modelType: ModelType)
+    case dynamicModelNotFound(modelId: String)
+    case dynamicModelDownloadFailed(modelId: String, underlyingError: Error)
 
     public var errorDescription: String? {
         switch self {
@@ -551,6 +688,10 @@ public enum WhisperKitModelError: LocalizedError {
             return "Invalid WhisperKit model path"
         case .verificationFailed(let modelType):
             return "WhisperKit model '\(modelType.displayName)' verification failed"
+        case .dynamicModelNotFound(let modelId):
+            return "WhisperKit model '\(modelId)' not found"
+        case .dynamicModelDownloadFailed(let modelId, let error):
+            return "Failed to download WhisperKit model '\(modelId)': \(error.localizedDescription)"
         }
     }
 }

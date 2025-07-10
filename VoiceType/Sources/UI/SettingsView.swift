@@ -58,7 +58,7 @@ public struct SettingsView: View {
                     case .general:
                         GeneralSettingsView()
                     case .models:
-                        ModelSettingsView()
+                        DynamicModelSettingsView()
                             .id("models-view") // Force unique identity
                     case .permission:
                         PermissionSettingsView()

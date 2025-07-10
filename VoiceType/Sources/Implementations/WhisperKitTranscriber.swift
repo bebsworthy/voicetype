@@ -75,6 +75,7 @@ public class WhisperKitTranscriber: Transcriber {
 
     private var whisperKit: WhisperKit?
     private var currentModelType: ModelType?
+    private var currentDynamicModelId: String?
     private let queue = DispatchQueue(label: "com.voicetype.whisperkit.transcriber")
 
     // MARK: - Transcriber Protocol Properties
@@ -275,6 +276,66 @@ public class WhisperKitTranscriber: Transcriber {
             currentModelType = type
         } catch {
             throw TranscriberError.modelLoadingFailed("Failed to load WhisperKit model: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Load a dynamic WhisperKit model by ID
+    public func loadDynamicModel(_ modelId: String) async throws {
+        // Unload current model if any
+        if whisperKit != nil {
+            whisperKit = nil
+            currentModelType = nil
+            currentDynamicModelId = nil
+        }
+
+        do {
+            // Get the model path from WhisperKitModelManager
+            let modelManager = WhisperKitModelManager()
+            
+            // If model is already downloaded, use its path
+            let modelFolder: String?
+            if let modelPath = modelManager.getDynamicModelPath(modelId: modelId) {
+                // Use the model path directly - it already points to the model directory
+                modelFolder = modelPath.path
+                print("📁 Using existing dynamic model at: \(modelFolder ?? "nil")")
+                
+                // List contents to verify
+                if let contents = try? FileManager.default.contentsOfDirectory(atPath: modelFolder ?? "") {
+                    print("📦 Model directory contents:")
+                    for file in contents {
+                        print("   - \(file)")
+                    }
+                }
+            } else {
+                // Let WhisperKit download it
+                modelFolder = nil
+                print("📥 Dynamic model not found locally, will download")
+            }
+            
+            // Create WhisperKit configuration
+            let computeOptions = ModelComputeOptions(
+                audioEncoderCompute: .cpuAndGPU,
+                textDecoderCompute: .cpuAndGPU
+            )
+            
+            let config = WhisperKitConfig(
+                model: modelId,
+                downloadBase: nil, // Let WhisperKit use its defaults
+                modelRepo: nil, // Let WhisperKit use its default repo
+                modelFolder: modelFolder,
+                computeOptions: computeOptions,
+                verbose: true,  // Enable verbose logging
+                logLevel: .debug,  // Enable debug logging
+                prewarm: true,
+                load: true,
+                download: modelFolder == nil // Only download if we don't have a local path
+            )
+
+            // Initialize WhisperKit
+            whisperKit = try await WhisperKit(config)
+            currentDynamicModelId = modelId
+        } catch {
+            throw TranscriberError.modelLoadingFailed("Failed to load WhisperKit model '\(modelId)': \(error.localizedDescription)")
         }
     }
 

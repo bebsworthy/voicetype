@@ -104,27 +104,35 @@
   - Updated VoiceTypeCoordinator with loading states
   - All model sizes work correctly
 
-### Phase 3: Advanced Features (0/4 completed)
+### Phase 3: Advanced Features (1/5 completed)
 
-- Task 3.1: Streaming Transcription Support
+- ✅ Task 3.1: Dynamic Model Management
+  - Created WhisperKitModel structure for dynamic models
+  - Implemented WhisperKitModelRepository for model discovery
+  - Added DynamicModelSettingsView for model selection
+  - Updated WhisperKitModelManager with dynamic model support
+  - Extended WhisperKitTranscriber to load dynamic models
+  - Updated VoiceTypeCoordinator to support dynamic model loading
+
+- Task 3.2: Streaming Transcription Support
   - Implement AudioStreamTranscriber integration
   - Add real-time transcription callbacks
   - Update VoiceTypeCoordinator for streaming
   - Add UI feedback for streaming progress
 
-- Task 3.2: Enhanced Transcription Features
+- Task 3.3: Enhanced Transcription Features
   - Add word-level timestamps support
   - Implement confidence score reporting
   - Add language auto-detection option
   - Integrate Voice Activity Detection (VAD)
 
-- Task 3.3: Error Handling and Recovery
+- Task 3.4: Error Handling and Recovery
   - Implement comprehensive error handling
   - Add fallback strategies for failures
   - Improve user error messages
   - Add automatic retry logic
 
-- Task 3.4: Performance Optimization
+- Task 3.5: Performance Optimization
   - Profile and optimize transcription pipeline
   - Implement model preloading strategies
   - Optimize memory usage
