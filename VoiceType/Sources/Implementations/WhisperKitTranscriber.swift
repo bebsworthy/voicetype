@@ -158,6 +158,24 @@ public class WhisperKitTranscriber: Transcriber {
         guard !audio.samples.isEmpty else {
             throw TranscriberError.invalidAudioData
         }
+        
+        // Debug audio data
+        print("🎤 WhisperKit Audio Debug:")
+        print("   Samples: \(audio.samples.count)")
+        print("   Duration: \(Double(audio.samples.count) / audio.sampleRate) seconds")
+        print("   Sample Rate: \(audio.sampleRate) Hz")
+        print("   Channels: \(audio.channelCount)")
+        
+        // Check audio levels
+        let maxSample = audio.samples.map { abs($0) }.max() ?? 0
+        let avgSample = audio.samples.reduce(Int32(0)) { $0 + Int32(abs($1)) } / Int32(max(audio.samples.count, 1))
+        print("   Max Sample: \(maxSample) (out of \(Int16.max))")
+        print("   Avg Sample: \(avgSample)")
+        print("   Max Amplitude: \(Float(maxSample) / Float(Int16.max) * 100)%")
+        
+        if maxSample < 100 {
+            print("⚠️ WARNING: Audio appears to be silent or very quiet!")
+        }
 
         // Set decoding options
         let options = DecodingOptions(
@@ -174,6 +192,15 @@ public class WhisperKitTranscriber: Transcriber {
 
         // Convert Int16 samples to Float using the built-in normalized samples
         let floatArray = audio.normalizedSamples
+        
+        // Debug normalized samples
+        let maxFloat = floatArray.map { abs($0) }.max() ?? 0
+        print("   Normalized Max: \(maxFloat)")
+        
+        // WhisperKit expects 16kHz audio
+        if audio.sampleRate != 16000 {
+            print("⚠️ WARNING: WhisperKit expects 16kHz audio but got \(audio.sampleRate) Hz")
+        }
 
         do {
             // Perform transcription
@@ -201,17 +228,46 @@ public class WhisperKitTranscriber: Transcriber {
             // Initialize WhisperKit with the specified model
             let modelName = getWhisperKitModelName(for: type)
 
+            // Get the model path from WhisperKitModelManager
+            let modelManager = await WhisperKitModelManager()
+            
+            // If model is already downloaded, use its path
+            let modelFolder: String?
+            if let modelPath = await modelManager.getModelPath(modelType: type) {
+                // Use the model path directly - it already points to the model directory
+                modelFolder = modelPath.path
+                print("📁 Using existing model at: \(modelFolder ?? "nil")")
+                
+                // List contents to verify
+                if let contents = try? FileManager.default.contentsOfDirectory(atPath: modelFolder ?? "") {
+                    print("📦 Model directory contents:")
+                    for file in contents {
+                        print("   - \(file)")
+                    }
+                }
+            } else {
+                // Let WhisperKit download it
+                modelFolder = nil
+                print("📥 Model not found locally, will download")
+            }
+            
             // Create WhisperKit configuration
+            let computeOptions = ModelComputeOptions(
+                audioEncoderCompute: .cpuAndGPU,
+                textDecoderCompute: .cpuAndGPU
+            )
+            
             let config = WhisperKitConfig(
                 model: modelName,
-                downloadBase: URL(string: "https://huggingface.co/"),
-                modelRepo: "argmaxinc/whisperkit-coreml",
-                computeOptions: ModelComputeOptions(),
-                verbose: false,
-                logLevel: .error,
+                downloadBase: nil, // Let WhisperKit use its defaults
+                modelRepo: nil, // Let WhisperKit use its default repo
+                modelFolder: modelFolder,
+                computeOptions: computeOptions,
+                verbose: true,  // Enable verbose logging
+                logLevel: .debug,  // Enable debug logging
                 prewarm: true,
                 load: true,
-                download: true
+                download: modelFolder == nil // Only download if we don't have a local path
             )
 
             // Initialize WhisperKit

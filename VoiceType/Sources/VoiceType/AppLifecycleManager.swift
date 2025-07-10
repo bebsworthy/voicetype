@@ -320,6 +320,11 @@ public class AppLifecycleManager: ObservableObject {
             logger.warning("Embedded fast model not found in bundle")
         }
 
+        // Verify WhisperKit models
+        logger.info("Checking WhisperKit models...")
+        let whisperKitManager = WhisperKitModelManager()
+        whisperKitManager.verifyAllModels()
+
         // Get installed models
         await modelManager.refreshInstalledModels()
         let installedModels = modelManager.installedModels

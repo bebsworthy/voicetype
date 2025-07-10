@@ -11,9 +11,11 @@ struct VoiceTypeApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     @StateObject private var coordinator = VoiceTypeCoordinator()
     @StateObject private var lifecycleManager = AppLifecycleManager()
+    @StateObject private var windowController = WindowController.shared
     @State private var showingOnboarding = false
     @State private var showingInitializationError = false
     @State private var isInitialized = false
+    @Environment(\.openWindow) var openWindow
 
     init() {
         // Init
@@ -22,13 +24,17 @@ struct VoiceTypeApp: App {
     var body: some Scene {
         // Menu Bar Extra
         MenuBarExtra {
-            MenuBarView(coordinator: coordinator, openSettingsAction: {
-                NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
-            })
+            MenuBarView(coordinator: coordinator)
                 .task {
                     guard !isInitialized else { return }
                     isInitialized = true
                     await initializeApp()
+                }
+                .onChange(of: windowController.shouldOpenSettings) { oldValue, shouldOpen in
+                    if shouldOpen {
+                        openWindow(id: "settings")
+                        windowController.settingsDidOpen()
+                    }
                 }
         } label: {
             MenuBarExtraIcon(coordinator: coordinator)
@@ -36,16 +42,22 @@ struct VoiceTypeApp: App {
         }
         .menuBarExtraStyle(.window)
 
-        // Settings Window
-        Settings {
+        // Settings Window as WindowGroup
+        WindowGroup("Settings", id: "settings") {
             SettingsView()
                 .environmentObject(coordinator)
+                .frame(minWidth: 600, minHeight: 500)
+                .frame(idealWidth: 600, idealHeight: 500)
         }
-        .defaultSize(width: 600, height: 400)
+        .windowResizability(.contentSize)
+        .defaultPosition(.center)
         .commands {
             // Include standard commands
             CommandGroup(replacing: .appSettings) {
-                SettingsLink()
+                Button("Settings...") {
+                    WindowController.shared.openSettings()
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
 
             // Custom commands
@@ -486,97 +498,3 @@ struct InstructionRow: View {
     }
 }
 
-// MARK: - Settings View
-
-struct SettingsView: View {
-    @EnvironmentObject var coordinator: VoiceTypeCoordinator
-
-    var body: some View {
-        TabView {
-            GeneralSettingsView()
-                .tabItem {
-                    Label("General", systemImage: "gear")
-                }
-
-            ModelSettingsView()
-                .tabItem {
-                    Label("Models", systemImage: "cpu")
-                }
-                .environmentObject(coordinator)
-
-            PermissionStatusView(permissionManager: PermissionManager())
-                .tabItem {
-                    Label("Permissions", systemImage: "lock.shield")
-                }
-
-            AboutView()
-                .tabItem {
-                    Label("About", systemImage: "info.circle")
-                }
-        }
-        .frame(width: 600, height: 500)
-    }
-}
-
-struct GeneralSettingsView: View {
-    @AppStorage("globalHotkey") private var globalHotkey = "ctrl+shift+v"
-    @AppStorage("recordingDuration") private var recordingDuration = 5.0
-    @AppStorage("autoStopRecording") private var autoStopRecording = true
-
-    var body: some View {
-        Form {
-            Section("Recording") {
-                HStack {
-                    Text("Global Hotkey:")
-                    TextField("Hotkey", text: $globalHotkey)
-                        .frame(width: 120)
-                }
-
-                HStack {
-                    Text("Recording Duration:")
-                    Slider(value: $recordingDuration, in: 1...30, step: 1)
-                    Text("\(Int(recordingDuration)) seconds")
-                        .frame(width: 80, alignment: .trailing)
-                }
-
-                Toggle("Auto-stop recording", isOn: $autoStopRecording)
-                    .help("Automatically stop recording after the specified duration")
-            }
-
-            Section("Behavior") {
-                // Future settings can go here
-                Text("More settings coming soon...")
-                    .foregroundColor(.secondary)
-                    .font(.caption)
-            }
-        }
-        .padding()
-    }
-}
-
-struct AboutView: View {
-    var body: some View {
-        VStack(spacing: 20) {
-            Image(nsImage: NSApp.applicationIconImage)
-                .resizable()
-                .frame(width: 128, height: 128)
-
-            Text("VoiceType")
-                .font(.largeTitle)
-                .fontWeight(.bold)
-
-            Text("Version 1.0.0")
-                .foregroundColor(.secondary)
-
-            Text("Voice-to-text input for macOS")
-                .font(.headline)
-
-            Spacer()
-
-            Link("GitHub Repository", destination: URL(string: "https://github.com/VoiceType/VoiceType")!)
-                .buttonStyle(.link)
-        }
-        .padding()
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}

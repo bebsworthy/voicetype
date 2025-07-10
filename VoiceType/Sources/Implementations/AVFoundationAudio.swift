@@ -144,20 +144,60 @@ public final class AVFoundationAudio: AudioProcessor {
         do {
             // Configure audio format
             let inputNode = audioEngine.inputNode
-            let recordingFormat = AVAudioFormat(
-                commonFormat: .pcmFormatInt16,
-                sampleRate: configuration.sampleRate,
-                channels: AVAudioChannelCount(configuration.channelCount),
-                interleaved: true
-            )
-
-            guard let format = recordingFormat else {
-                throw AudioProcessorError.systemError("Invalid audio format")
+            
+            // Use the input node's native format to avoid format mismatch
+            let inputFormat = inputNode.outputFormat(forBus: 0)
+            
+            // Log format details for debugging
+            print("🎤 Audio Input Format:")
+            print("   Sample Rate: \(inputFormat.sampleRate) Hz")
+            print("   Channels: \(inputFormat.channelCount)")
+            print("   Format: \(inputFormat.commonFormat.rawValue)")
+            print("   Interleaved: \(inputFormat.isInterleaved)")
+            
+            // Verify the format is valid
+            guard inputFormat.channelCount > 0 && inputFormat.sampleRate > 0 else {
+                throw AudioProcessorError.systemError("Invalid input format")
             }
 
-            // Install tap on input node
-            inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(configuration.bufferSize), format: format) { [weak self] buffer, _ in
-                self?.processAudioBuffer(buffer)
+            // Create a converter if we need to resample to 16kHz
+            let targetFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                            sampleRate: configuration.sampleRate,
+                                            channels: AVAudioChannelCount(configuration.channelCount),
+                                            interleaved: true)!
+            
+            // Install tap on input node with its native format
+            inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(configuration.bufferSize), format: inputFormat) { [weak self] buffer, when in
+                guard let self = self else { return }
+                
+                // If formats match, process directly
+                if inputFormat.sampleRate == self.configuration.sampleRate {
+                    self.processAudioBuffer(buffer)
+                } else {
+                    // Need to resample
+                    guard let converter = AVAudioConverter(from: inputFormat, to: targetFormat) else {
+                        print("❌ Failed to create audio converter")
+                        return
+                    }
+                    
+                    let frameCount = AVAudioFrameCount(Double(buffer.frameLength) * (targetFormat.sampleRate / inputFormat.sampleRate))
+                    guard let convertedBuffer = AVAudioPCMBuffer(pcmFormat: targetFormat, frameCapacity: frameCount) else {
+                        print("❌ Failed to create converted buffer")
+                        return
+                    }
+                    
+                    do {
+                        let inputBlock: AVAudioConverterInputBlock = { _, outStatus in
+                            outStatus.pointee = .haveData
+                            return buffer
+                        }
+                        
+                        try converter.convert(to: convertedBuffer, error: nil, withInputFrom: inputBlock)
+                        self.processAudioBuffer(convertedBuffer)
+                    } catch {
+                        print("❌ Audio conversion error: \(error)")
+                    }
+                }
             }
 
             // Start audio engine
@@ -212,20 +252,42 @@ public final class AVFoundationAudio: AudioProcessor {
     // MARK: - Private Methods
 
     private func processAudioBuffer(_ buffer: AVAudioPCMBuffer) {
-        guard let int16ChannelData = buffer.int16ChannelData else { return }
-
         let channelCount = Int(buffer.format.channelCount)
         let frameLength = Int(buffer.frameLength)
-
+        
         // Convert to Int16 array
         var samples = [Int16]()
         samples.reserveCapacity(frameLength * channelCount)
-
-        for frame in 0..<frameLength {
-            for channel in 0..<channelCount {
-                let sample = int16ChannelData[channel][frame]
-                samples.append(sample)
+        
+        // Handle different audio formats
+        if let floatChannelData = buffer.floatChannelData {
+            // Most common case: Float32 format
+            var maxAmplitude: Float = 0.0
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    let floatSample = floatChannelData[channel][frame]
+                    maxAmplitude = max(maxAmplitude, abs(floatSample))
+                    // Convert Float32 to Int16 with proper scaling
+                    let int16Sample = Int16(max(Float(Int16.min), min(Float(Int16.max), floatSample * Float(Int16.max))))
+                    samples.append(int16Sample)
+                }
             }
+            // Debug: Log if we're getting silent audio
+            if maxAmplitude < 0.001 {
+                print("⚠️ Warning: Audio buffer appears to be silent (max amplitude: \(maxAmplitude))")
+            }
+        } else if let int16ChannelData = buffer.int16ChannelData {
+            // Less common: Already Int16 format
+            for frame in 0..<frameLength {
+                for channel in 0..<channelCount {
+                    let sample = int16ChannelData[channel][frame]
+                    samples.append(sample)
+                }
+            }
+        } else {
+            // Unsupported format
+            print("⚠️ Unsupported audio buffer format")
+            return
         }
 
         // Add to circular buffer

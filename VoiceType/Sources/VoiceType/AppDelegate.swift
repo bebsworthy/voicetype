@@ -66,14 +66,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showSettings() {
-        // For SwiftUI apps, we need to use the settings window differently
-        // The action needs to be sent to the right responder
-        if let settingsMenuItem = NSApplication.shared.mainMenu?.items.first(where: { $0.submenu?.title == "VoiceType" })?.submenu?.items.first(where: { $0.title.contains("Settings") || $0.title.contains("Preferences") }) {
-            settingsMenuItem.target?.perform(settingsMenuItem.action, with: settingsMenuItem)
-        } else {
-            // Fallback: try to trigger the settings action directly
-            NSApplication.shared.sendAction(NSSelectorFromString("showSettingsWindow:"), to: nil, from: nil)
-        }
+        WindowController.shared.openSettings()
     }
 
     // MARK: - Background Tasks

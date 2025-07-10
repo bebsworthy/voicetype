@@ -221,7 +221,7 @@ public class VoiceTypeCoordinator: ObservableObject {
     }
 
     /// Load the currently selected model
-    private func loadSelectedModel() async {
+    public func loadSelectedModel() async {
         // Set loading state
         isLoadingModel = true
         modelLoadingProgress = 0.0

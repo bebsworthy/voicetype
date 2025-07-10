@@ -2,284 +2,195 @@ import SwiftUI
 import VoiceTypeCore
 import VoiceTypeImplementations
 
-/// Settings view specifically for model management with download progress and smooth switching
+/// Settings view specifically for model management
 public struct ModelSettingsView: View {
-    @EnvironmentObject var coordinator: VoiceTypeCoordinator
     @StateObject private var modelManager = WhisperKitModelManager()
-    @AppStorage("selectedModel") private var selectedModelSetting = "fast"
-
-    @State private var selectedModel: ModelType = .fast
-    @State private var isLoadingModel = false
-    @State private var loadingModelType: ModelType?
-    @State private var showingRestartAlert = false
-    @State private var showingDownloadError = false
-    @State private var downloadError: Error?
-
+    
     public init() {}
-
+    
     public var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            // Header
-            Text("AI Model Settings")
-                .font(.title2)
-                .fontWeight(.semibold)
-
-            Text("Choose the model that best fits your needs. Larger models provide better accuracy but require more storage and memory.")
-                .font(.callout)
-                .foregroundColor(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
-            // Model Selection
-            VStack(spacing: 12) {
-                ForEach(ModelType.allCases, id: \.self) { modelType in
-                    ModelRowView(
-                        modelType: modelType,
-                        isSelected: selectedModel == modelType,
-                        isDownloaded: modelManager.isModelDownloaded(modelType: modelType),
-                        isDownloading: modelManager.isDownloading && loadingModelType == modelType,
-                        downloadProgress: modelManager.isDownloading && loadingModelType == modelType ? modelManager.downloadProgress : 0,
-                        onSelect: {
-                            selectModel(modelType)
-                        },
-                        onDownload: {
-                            Task {
-                                await downloadModel(modelType)
-                            }
-                        }
-                    )
-                }
-            }
-
-            Spacer()
-
-            // Info Box
-            GroupBox {
-                VStack(alignment: .leading, spacing: 8) {
-                    Label("Current Model", systemImage: "info.circle")
-                        .font(.headline)
-
-                    HStack {
-                        Text("Active:")
-                            .foregroundColor(.secondary)
-                        Text(coordinator.selectedModel.displayName)
-                            .fontWeight(.medium)
-
-                        if isLoadingModel {
-                            ProgressView()
-                                .scaleEffect(0.7)
-                                .padding(.leading, 4)
-                        }
-                    }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 20) {
+                Text("Choose the model that best fits your needs. Larger models provide better accuracy but require more storage and memory.")
                     .font(.callout)
-
-                    if let modelSize = modelManager.getModelSize(modelType: coordinator.selectedModel) {
-                        HStack {
-                            Text("Size on disk:")
-                                .foregroundColor(.secondary)
-                            Text(formatBytes(modelSize))
-                                .fontWeight(.medium)
-                        }
-                        .font(.callout)
-                    }
+                    .foregroundColor(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                
+                // Model list
+                VStack(alignment: .leading, spacing: 12) {
+                    ModelRowView(modelType: .fast, modelManager: modelManager)
+                    Divider()
+                    ModelRowView(modelType: .balanced, modelManager: modelManager)
+                    Divider()
+                    ModelRowView(modelType: .accurate, modelManager: modelManager)
                 }
-                .padding(.vertical, 4)
+                .padding()
+                .background(Color.gray.opacity(0.1))
+                .cornerRadius(8)
+                
+                Spacer(minLength: 20)
             }
+            .padding()
         }
-        .padding()
         .frame(maxWidth: 600)
-        .onAppear {
-            selectedModel = modelTypeFromString(selectedModelSetting)
-        }
-        .alert("Restart Required", isPresented: $showingRestartAlert) {
-            Button("Later") {
-                // User chose to restart later
-            }
-            Button("Restart Now") {
-                restartApp()
-            }
-        } message: {
-            Text("VoiceType needs to restart to switch to the \(selectedModel.displayName) model. You can restart now or the change will take effect the next time you launch the app.")
-        }
-        .alert("Download Failed", isPresented: $showingDownloadError) {
-            Button("OK") {
-                downloadError = nil
-            }
-        } message: {
-            if let error = downloadError {
-                Text(error.localizedDescription)
-            } else {
-                Text("Failed to download the model. Please check your internet connection and try again.")
-            }
-        }
-    }
-
-    // MARK: - Private Methods
-
-    private func selectModel(_ modelType: ModelType) {
-        guard modelManager.isModelDownloaded(modelType: modelType) else {
-            // Model needs to be downloaded first
-            return
-        }
-
-        selectedModel = modelType
-        selectedModelSetting = modelTypeToString(modelType)
-
-        // If selecting a different model than currently loaded, show restart alert
-        if modelType != coordinator.selectedModel {
-            showingRestartAlert = true
-        }
-    }
-
-    private func downloadModel(_ modelType: ModelType) async {
-        loadingModelType = modelType
-
-        do {
-            try await modelManager.downloadModel(modelType: modelType)
-
-            // After successful download, select the model
+        .task {
+            // Verify models on view appear
             await MainActor.run {
-                selectModel(modelType)
-            }
-        } catch {
-            await MainActor.run {
-                downloadError = error
-                showingDownloadError = true
+                modelManager.verifyAllModels()
             }
         }
-
-        loadingModelType = nil
-    }
-
-    private func modelTypeFromString(_ string: String) -> ModelType {
-        switch string {
-        case "fast": return .fast
-        case "balanced": return .balanced
-        case "accurate": return .accurate
-        default: return .fast
-        }
-    }
-
-    private func modelTypeToString(_ modelType: ModelType) -> String {
-        switch modelType {
-        case .fast: return "fast"
-        case .balanced: return "balanced"
-        case .accurate: return "accurate"
-        }
-    }
-
-    private func formatBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .binary
-        return formatter.string(fromByteCount: bytes)
-    }
-
-    private func restartApp() {
-        // Save any pending changes
-        UserDefaults.standard.synchronize()
-
-        // Relaunch the app
-        let url = URL(fileURLWithPath: Bundle.main.resourcePath!)
-        let path = url.deletingLastPathComponent().deletingLastPathComponent().absoluteString
-        let task = Process()
-        task.launchPath = "/usr/bin/open"
-        task.arguments = [path]
-        task.launch()
-
-        // Terminate current instance
-        NSApplication.shared.terminate(nil)
     }
 }
 
-// MARK: - Model Row View
-
 struct ModelRowView: View {
     let modelType: ModelType
-    let isSelected: Bool
-    let isDownloaded: Bool
-    let isDownloading: Bool
-    let downloadProgress: Double
-    let onSelect: () -> Void
-    let onDownload: () -> Void
-
+    @ObservedObject var modelManager: WhisperKitModelManager
+    @EnvironmentObject var coordinator: VoiceTypeCoordinator
+    
+    @State private var isDownloading = false
+    @State private var showDeleteConfirmation = false
+    @State private var showError = false
+    @State private var errorMessage = ""
+    
+    private var isDownloaded: Bool {
+        modelManager.isModelDownloaded(modelType: modelType)
+    }
+    
+    private var isSelected: Bool {
+        coordinator.selectedModel == modelType
+    }
+    
     var body: some View {
-        HStack(spacing: 12) {
-            // Radio button
-            Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                .foregroundColor(isSelected ? .accentColor : .secondary)
-                .imageScale(.large)
-                .onTapGesture {
-                    if isDownloaded {
-                        onSelect()
-                    }
-                }
-                .disabled(!isDownloaded)
-
-            // Model info
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(modelType.displayName)
                         .font(.headline)
-
-                    if modelType == .fast {
-                        Text("(Embedded)")
+                    
+                    Text(modelType.description)
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    HStack(spacing: 16) {
+                        Label("\(modelType.sizeInMB) MB", systemImage: "internaldrive")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        
+                        Label("\(modelType.minimumRAMRequirement) GB RAM", systemImage: "memorychip")
                             .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
-
-                Text(modelType.description)
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-
-                HStack(spacing: 8) {
-                    Label("\(modelType.sizeInMB) MB", systemImage: "internaldrive")
-                    Label("\(modelType.minimumRAMRequirement) GB RAM", systemImage: "memorychip")
+                
+                Spacer()
+                
+                if isDownloading {
+                    VStack {
+                        ProgressView()
+                            .progressViewStyle(.circular)
+                            .scaleEffect(0.8)
+                        if modelManager.downloadProgress > 0 {
+                            Text("\(Int(modelManager.downloadProgress * 100))%")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                } else if isDownloaded {
+                    HStack(spacing: 12) {
+                        // Selection radio button
+                        Button(action: {
+                            selectModel()
+                        }) {
+                            HStack(spacing: 6) {
+                                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                                    .foregroundColor(isSelected ? .accentColor : .secondary)
+                                Text(isSelected ? "Active" : "Select")
+                                    .font(.caption)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        
+                        Button("Delete") {
+                            showDeleteConfirmation = true
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                        .disabled(isSelected) // Can't delete the active model
+                    }
+                } else {
+                    Button("Download") {
+                        downloadModel()
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.regular)
                 }
-                .font(.caption2)
-                .foregroundColor(.secondary)
-            }
-
-            Spacer()
-
-            // Download/Status indicator
-            if isDownloaded {
-                Image(systemName: "checkmark.circle.fill")
-                    .foregroundColor(.green)
-                    .imageScale(.large)
-            } else if isDownloading {
-                VStack(spacing: 4) {
-                    ProgressView(value: downloadProgress)
-                        .progressViewStyle(CircularProgressViewStyle())
-                        .scaleEffect(0.8)
-
-                    Text("\(Int(downloadProgress * 100))%")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                }
-                .frame(width: 50)
-            } else {
-                Button(action: onDownload) {
-                    Label("Download", systemImage: "arrow.down.circle")
-                        .font(.caption)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
             }
         }
-        .padding()
-        .background(
-            RoundedRectangle(cornerRadius: 8)
-                .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.gray.opacity(0.05))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 8)
-                        .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
-                )
+        .padding(.vertical, 4)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(isSelected ? Color.accentColor : Color.clear, lineWidth: 2)
         )
-        .contentShape(Rectangle())
-        .onTapGesture {
-            if isDownloaded {
-                onSelect()
+        .alert("Delete Model", isPresented: $showDeleteConfirmation) {
+            Button("Cancel", role: .cancel) {}
+            Button("Delete", role: .destructive) {
+                deleteModel()
             }
+        } message: {
+            Text("Are you sure you want to delete the \(modelType.displayName) model? You can download it again later.")
+        }
+        .alert("Error", isPresented: $showError) {
+            Button("OK") {}
+        } message: {
+            Text(errorMessage)
+        }
+    }
+    
+    private func downloadModel() {
+        isDownloading = true
+        
+        Task {
+            do {
+                try await modelManager.downloadModel(modelType: modelType)
+                isDownloading = false
+            } catch {
+                isDownloading = false
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+    
+    private func deleteModel() {
+        Task {
+            do {
+                try await modelManager.deleteModel(modelType: modelType)
+            } catch {
+                errorMessage = error.localizedDescription
+                showError = true
+            }
+        }
+    }
+    
+    private func selectModel() {
+        // Update the coordinator's selected model
+        coordinator.selectedModel = modelType
+        
+        // Save to UserDefaults
+        let modelString: String
+        switch modelType {
+        case .fast:
+            modelString = "fast"
+        case .balanced:
+            modelString = "balanced"
+        case .accurate:
+            modelString = "accurate"
+        }
+        UserDefaults.standard.set(modelString, forKey: "selectedModel")
+        
+        // Load the model
+        Task {
+            await coordinator.loadSelectedModel()
         }
     }
 }
@@ -304,7 +215,6 @@ extension ModelType {
 struct ModelSettingsView_Previews: PreviewProvider {
     static var previews: some View {
         ModelSettingsView()
-            .environmentObject(VoiceTypeCoordinator())
             .frame(width: 600, height: 500)
     }
 }
