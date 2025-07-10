@@ -580,7 +580,11 @@ public final class WhisperKitModelManager: ObservableObject {
             // Get the actual model folder where WhisperKit downloaded
             guard let downloadedModelFolder = whisperKit.modelFolder else {
                 print("❌ WhisperKit didn't set a model folder")
-                throw WhisperKitModelError.downloadFailed(modelType: modelType, underlyingError: NSError(domain: "WhisperKitModelManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "WhisperKit didn't set model folder after download"]))
+                if let modelType = modelType {
+                    throw WhisperKitModelError.downloadFailed(modelType: modelType, underlyingError: NSError(domain: "WhisperKitModelManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "WhisperKit didn't set model folder after download"]))
+                } else {
+                    throw WhisperKitModelError.dynamicModelDownloadFailed(modelId: modelName, underlyingError: NSError(domain: "WhisperKitModelManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "WhisperKit didn't set model folder after download"]))
+                }
             }
             
             print("✅ Model downloaded to: \(downloadedModelFolder.path)")

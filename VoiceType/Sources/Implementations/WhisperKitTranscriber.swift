@@ -290,11 +290,11 @@ public class WhisperKitTranscriber: Transcriber {
 
         do {
             // Get the model path from WhisperKitModelManager
-            let modelManager = WhisperKitModelManager()
+            let modelManager = await WhisperKitModelManager()
             
             // If model is already downloaded, use its path
             let modelFolder: String?
-            if let modelPath = modelManager.getDynamicModelPath(modelId: modelId) {
+            if let modelPath = await modelManager.getDynamicModelPath(modelId: modelId) {
                 // Use the model path directly - it already points to the model directory
                 modelFolder = modelPath.path
                 print("📁 Using existing dynamic model at: \(modelFolder ?? "nil")")
