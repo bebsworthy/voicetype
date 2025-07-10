@@ -142,6 +142,12 @@ public struct DynamicModelSettingsView: View {
             // Set current selected model
             selectedModelId = getCurrentSelectedModelId()
         }
+        .onReceive(coordinator.$selectedDynamicModelId) { newModelId in
+            // Update selection when coordinator's selected model changes
+            if let modelId = newModelId {
+                selectedModelId = modelId
+            }
+        }
     }
     
     // MARK: - Computed Properties
@@ -181,13 +187,22 @@ public struct DynamicModelSettingsView: View {
     }
     
     private func getCurrentSelectedModelId() -> String? {
-        // Check if using legacy model type
+        // First check if we have a dynamic model ID in the coordinator
+        if let dynamicModelId = coordinator.selectedDynamicModelId {
+            return dynamicModelId
+        }
+        
+        // Check if we have a stored dynamic model ID in UserDefaults
+        if let storedDynamicModelId = UserDefaults.standard.string(forKey: "selectedDynamicModelId") {
+            return storedDynamicModelId
+        }
+        
+        // Fall back to legacy model type
         if let legacyModel = modelRepository.modelForLegacyType(coordinator.selectedModel) {
             return legacyModel.id
         }
         
-        // Check if we have a stored dynamic model ID
-        return UserDefaults.standard.string(forKey: "selectedDynamicModelId")
+        return nil
     }
     
     private func formatBaseModelName(_ baseModel: String) -> String {

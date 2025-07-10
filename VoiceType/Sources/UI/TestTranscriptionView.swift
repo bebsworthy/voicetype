@@ -26,7 +26,7 @@ public struct TestTranscriptionView: View {
                         Label("Active Model", systemImage: "cpu")
                             .font(.headline)
                         Spacer()
-                        Text(coordinator.selectedModel.displayName)
+                        Text(getActiveModelName())
                             .fontWeight(.medium)
                     }
                     .padding(.vertical, 4)
@@ -161,6 +161,22 @@ public struct TestTranscriptionView: View {
     }
     
     // MARK: - Private Methods
+    
+    private func getActiveModelName() -> String {
+        // Check if we're using a dynamic model
+        if let dynamicModelId = coordinator.selectedDynamicModelId {
+            // Extract a display name from the model ID
+            // e.g., "openai_whisper-tiny" -> "whisper-tiny"
+            let displayName = dynamicModelId
+                .replacingOccurrences(of: "openai_", with: "")
+                .replacingOccurrences(of: "distil-whisper_", with: "")
+                .replacingOccurrences(of: "_", with: " ")
+            return displayName
+        } else {
+            // Fall back to legacy model type
+            return coordinator.selectedModel.displayName
+        }
+    }
     
     private func toggleRecording() {
         if isRecording {
