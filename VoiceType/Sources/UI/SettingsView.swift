@@ -121,6 +121,15 @@ struct GeneralSettingsView: View {
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
+                    // Show error if hotkey registration failed
+                    if let error = coordinator.errorMessage,
+                       error.contains("Failed to register hotkey") {
+                        Text(error)
+                            .font(.caption)
+                            .foregroundColor(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    
                     Divider()
                     
                     // Maximum Recording Duration

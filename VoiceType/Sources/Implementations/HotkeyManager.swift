@@ -350,7 +350,7 @@ public class HotkeyManager: ObservableObject {
 
         var modifiers: NSEvent.ModifierFlags = []
         var keyPart: String?
-        let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift"])
+        let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift", "globe", "fn", "function"])
         
         // Special case: if there's only one part and it's a special key, treat it as the key, not a modifier
         if parts.count == 1 {
@@ -379,7 +379,7 @@ public class HotkeyManager: ObservableObject {
                 }
             }
         } else {
-            // Multiple parts - process normally
+            // Multiple parts - process each part
             for part in parts {
                 switch part {
                 case "cmd", "command":
@@ -390,9 +390,12 @@ public class HotkeyManager: ObservableObject {
                     modifiers.insert(.option)
                 case "shift":
                     modifiers.insert(.shift)
-                case "fn", "function":
+                case "globe", "fn":
+                    modifiers.insert(.function)  // Globe/Fn key sets the function modifier
+                case "function":
                     modifiers.insert(.function)
                 default:
+                    // This must be the key part
                     if keyPart == nil {
                         keyPart = part
                     } else {
@@ -594,7 +597,7 @@ public enum HotkeyError: LocalizedError {
     public var errorDescription: String? {
         switch self {
         case .invalidKeyCombo(let combo):
-            return "Invalid key combination: '\(combo)'. Use format like 'cmd+shift+v'"
+            return "Invalid key combination: '\(combo)'. Use a single key (e.g., 'space', 'globe') or combine modifiers with a key (e.g., 'cmd+shift+v', 'globe+p')"
         case .conflictingHotkey(let identifier, let combo):
             return "Key combination '\(combo)' conflicts with existing hotkey '\(identifier)'"
         case .hotkeyNotFound(let identifier):

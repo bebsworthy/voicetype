@@ -131,7 +131,7 @@ public struct HotkeyRecorderView: View {
         if flags.contains(.option) { modifiers.append("option") }
         if flags.contains(.control) { modifiers.append("ctrl") }
         if flags.contains(.shift) { modifiers.append("shift") }
-        if flags.contains(.function) && event.keyCode != 63 { modifiers.append("fn") } // Don't add fn for Globe key alone
+        if flags.contains(.function) && event.keyCode != 63 { modifiers.append("globe") } // Globe key as modifier
         
         // Get the key
         if event.type == .keyDown {
