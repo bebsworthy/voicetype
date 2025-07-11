@@ -324,17 +324,6 @@ public class WhisperKitModelRepository: ObservableObject {
 // MARK: - Model Selection Helpers
 
 extension WhisperKitModelRepository {
-    /// Get the model that matches the legacy ModelType
-    public func modelForLegacyType(_ type: ModelType) -> WhisperKitModel? {
-        switch type {
-        case .fast:
-            return model(withId: "openai_whisper-tiny")
-        case .balanced:
-            return model(withId: "openai_whisper-base")
-        case .accurate:
-            return model(withId: "openai_whisper-small")
-        }
-    }
     
     /// Find best matching model for a given size constraint
     public func bestModel(maxSizeBytes: Int64, preferEnglish: Bool = false) -> WhisperKitModel? {

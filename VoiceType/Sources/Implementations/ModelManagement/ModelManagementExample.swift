@@ -61,7 +61,7 @@ struct ModelManagementExampleView: View {
                     ForEach(modelManager.installedModels, id: \.path) { model in
                         HStack {
                             VStack(alignment: .leading) {
-                                Text(model.type.rawValue.capitalized)
+                                Text(model.name.capitalized)
                                     .font(.body)
                                 Text("Version: \(model.version)")
                                     .font(.caption)
@@ -78,7 +78,7 @@ struct ModelManagementExampleView: View {
                                 Task {
                                     do {
                                         try await modelManager.deleteModel(
-                                            name: model.type.rawValue,
+                                            name: model.name,
                                             version: model.version
                                         )
                                     } catch {
@@ -207,7 +207,7 @@ func exampleManageModels() async throws {
 
     // List models
     for model in await manager.installedModels {
-        print("Model: \(model.type.rawValue) v\(model.version)")
+        print("Model: \(model.name) v\(model.version)")
         print("  Size: \(ByteCountFormatter.string(fromByteCount: model.sizeInBytes, countStyle: .binary))")
         print("  Path: \(model.path)")
     }

@@ -9,7 +9,7 @@ public class CoreMLWhisper: NSObject, Transcriber {
     // MARK: - Properties
 
     private var model: MLModel?
-    private let modelType: WhisperModel
+    private let modelName: String
     private let modelPath: String
     private let processingQueue = DispatchQueue(label: "com.voicetype.whisper", qos: .userInitiated)
 
@@ -22,10 +22,11 @@ public class CoreMLWhisper: NSObject, Transcriber {
 
     public var modelInfo: ModelInfo {
         ModelInfo(
-            type: modelType.toModelType,
+            id: modelName,
+            name: modelName,
             version: "1.0",
             path: URL(fileURLWithPath: modelPath),
-            sizeInBytes: Int64(modelType.sizeInMB * 1024 * 1024),
+            sizeInBytes: 100 * 1024 * 1024, // Default estimate
             isLoaded: isReady,
             lastUsed: Date()
         )
@@ -44,12 +45,12 @@ public class CoreMLWhisper: NSObject, Transcriber {
 
     // MARK: - Initialization
 
-    /// Initialize with a specific model type and path
+    /// Initialize with a specific model name and path
     /// - Parameters:
-    ///   - modelType: The Whisper model size to use
+    ///   - modelName: The model identifier
     ///   - modelPath: Path to the compiled CoreML model file
-    public init(modelType: WhisperModel, modelPath: String) {
-        self.modelType = modelType
+    public init(modelName: String, modelPath: String) {
+        self.modelName = modelName
         self.modelPath = modelPath
         super.init()
     }
@@ -103,20 +104,9 @@ public class CoreMLWhisper: NSObject, Transcriber {
         return try await transcribeData(audioData)
     }
 
-    public func loadModel(_ type: ModelType) async throws {
-        // Map ModelType to WhisperModel
-        let whisperModel: WhisperModel
-        switch type {
-        case .fast:
-            whisperModel = .tiny
-        case .balanced:
-            whisperModel = .base
-        case .accurate:
-            whisperModel = .small
-        }
-
-        // Update model type if different
-        if whisperModel != modelType {
+    public func loadModel(_ modelId: String) async throws {
+        // Check if this matches our current model
+        if modelId != modelName {
             // Would need to reinitialize with new model path
             throw TranscriberError.modelLoadingFailed("Cannot change model type after initialization")
         }

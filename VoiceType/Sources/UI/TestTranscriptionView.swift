@@ -164,7 +164,7 @@ public struct TestTranscriptionView: View {
     
     private func getActiveModelName() -> String {
         // Check if we're using a dynamic model
-        if let dynamicModelId = coordinator.selectedDynamicModelId {
+        if let dynamicModelId = coordinator.selectedModelId {
             // Extract a display name from the model ID
             // e.g., "openai_whisper-tiny" -> "whisper-tiny"
             let displayName = dynamicModelId
@@ -173,8 +173,8 @@ public struct TestTranscriptionView: View {
                 .replacingOccurrences(of: "_", with: " ")
             return displayName
         } else {
-            // Fall back to legacy model type
-            return coordinator.selectedModel.displayName
+            // Fall back to default
+            return "whisper-tiny"
         }
     }
     

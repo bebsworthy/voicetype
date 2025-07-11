@@ -46,7 +46,7 @@ struct SettingsView: View {
                     case .general:
                         GeneralSettingsView(settingsManager: settingsManager)
                     case .models:
-                        ModelSettingsView(modelManager: modelManager, settingsManager: settingsManager)
+                        DynamicModelSettingsView()
                     case .permissions:
                         PermissionSettingsView(permissionManager: permissionManager)
                     case .audio:
@@ -109,83 +109,6 @@ struct GeneralSettingsView: View {
     }
 }
 
-// MARK: - Model Settings
-
-struct ModelSettingsView: View {
-    @ObservedObject var modelManager: ModelManager
-    @ObservedObject var settingsManager: SettingsManager
-    
-    var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            Text("Models")
-                .font(.title)
-                .fontWeight(.semibold)
-            
-            Text("Download and manage AI models for transcription.")
-                .font(.callout)
-                .foregroundColor(.secondary)
-            
-            // Model Selection
-            GroupBox(label: Label("Active Model", systemImage: "checkmark.circle")) {
-                ModelSelectionView(
-                    selectedModel: $settingsManager.selectedModel,
-                    modelManager: modelManager
-                )
-                .padding(.vertical, 8)
-            }
-            
-            // Available Models
-            GroupBox(label: Label("Available Models", systemImage: "arrow.down.circle")) {
-                VStack(spacing: 12) {
-                    ForEach(ModelType.allCases, id: \.self) { modelType in
-                        ModelRowView(
-                            modelType: modelType,
-                            modelManager: modelManager,
-                            isSelected: settingsManager.selectedModel == modelType
-                        )
-                    }
-                }
-                .padding(.vertical, 8)
-            }
-            
-            // Storage Info
-            let storageInfo = modelManager.storageInfo()
-            GroupBox(label: Label("Storage", systemImage: "internaldrive")) {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack {
-                        Text("Models:")
-                        Spacer()
-                        Text(formatBytes(storageInfo.used))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    HStack {
-                        Text("Available:")
-                        Spacer()
-                        Text(formatBytes(storageInfo.available))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    Button("Clean Up Cache") {
-                        Task {
-                            await modelManager.performMaintenance()
-                        }
-                    }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                }
-                .padding(.vertical, 8)
-                .font(.callout)
-            }
-        }
-    }
-    
-    private func formatBytes(_ bytes: Int64) -> String {
-        let formatter = ByteCountFormatter()
-        formatter.countStyle = .binary
-        return formatter.string(fromByteCount: bytes)
-    }
-}
 
 // MARK: - Permission Settings
 

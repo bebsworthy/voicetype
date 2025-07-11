@@ -38,7 +38,8 @@ public class MockTranscriber: Transcriber {
 
     public var modelInfo: ModelInfo {
         ModelInfo(
-            type: .fast,
+            id: "mock-model",
+            name: "Mock Model",
             version: "1.0-mock",
             path: URL(fileURLWithPath: "/mock/path"),
             sizeInBytes: 0,
@@ -125,7 +126,7 @@ public class MockTranscriber: Transcriber {
         }
     }
 
-    public func loadModel(_ type: ModelType) async throws {
+    public func loadModel(_ modelId: String) async throws {
         // Simulate model loading
         isReady = true
     }

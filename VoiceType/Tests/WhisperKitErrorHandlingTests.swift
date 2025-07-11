@@ -108,11 +108,11 @@ class WhisperKitErrorHandlingTests: XCTestCase {
         }
     }
 
-    func testInvalidModelType() async throws {
+    func testInvalidString() async throws {
         // This test would be more meaningful if we could inject invalid model types
         // For now, we test that all valid model types can be attempted to load
 
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             do {
                 try await transcriber.loadModel(modelType)
                 // If it succeeds, model is available
@@ -329,7 +329,7 @@ class WhisperKitErrorHandlingTests: XCTestCase {
 
         // Rapidly switch between models
         for _ in 0..<3 {
-            for modelType in ModelType.allCases {
+            for modelType in String.allCases {
                 do {
                     try await transcriber.loadModel(modelType)
                     // Small delay to let model load

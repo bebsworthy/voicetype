@@ -142,7 +142,7 @@ public struct DynamicModelSettingsView: View {
             // Set current selected model
             selectedModelId = getCurrentSelectedModelId()
         }
-        .onReceive(coordinator.$selectedDynamicModelId) { newModelId in
+        .onReceive(coordinator.$selectedModelId) { newModelId in
             // Update selection when coordinator's selected model changes
             if let modelId = newModelId {
                 selectedModelId = modelId
@@ -188,21 +188,17 @@ public struct DynamicModelSettingsView: View {
     
     private func getCurrentSelectedModelId() -> String? {
         // First check if we have a dynamic model ID in the coordinator
-        if let dynamicModelId = coordinator.selectedDynamicModelId {
+        if let dynamicModelId = coordinator.selectedModelId {
             return dynamicModelId
         }
         
         // Check if we have a stored dynamic model ID in UserDefaults
-        if let storedDynamicModelId = UserDefaults.standard.string(forKey: "selectedDynamicModelId") {
+        if let storedDynamicModelId = UserDefaults.standard.string(forKey: "selectedModelId") {
             return storedDynamicModelId
         }
         
-        // Fall back to legacy model type
-        if let legacyModel = modelRepository.modelForLegacyType(coordinator.selectedModel) {
-            return legacyModel.id
-        }
-        
-        return nil
+        // Default to tiny model if nothing set
+        return "openai_whisper-tiny"
     }
     
     private func formatBaseModelName(_ baseModel: String) -> String {
@@ -405,7 +401,7 @@ struct DynamicModelRowView: View {
         onSelect()
         
         // Save the selected dynamic model ID
-        UserDefaults.standard.set(model.id, forKey: "selectedDynamicModelId")
+        UserDefaults.standard.set(model.id, forKey: "selectedModelId")
         
         // Load the model in coordinator
         Task {

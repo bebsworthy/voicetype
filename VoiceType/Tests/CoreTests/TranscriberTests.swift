@@ -214,7 +214,7 @@ final class TranscriberTests: XCTestCase {
         XCTAssertEqual(tiny.targetLatency, "<2s")
         XCTAssertTrue(tiny.isEmbedded)
         XCTAssertEqual(tiny.minimumRAM, "4GB")
-        XCTAssertEqual(tiny.toModelType, .fast)
+        XCTAssertEqual(tiny.toString, .fast)
 
         // Test Base model
         let base = WhisperModel.base
@@ -224,7 +224,7 @@ final class TranscriberTests: XCTestCase {
         XCTAssertEqual(base.targetLatency, "<3s")
         XCTAssertFalse(base.isEmbedded)
         XCTAssertEqual(base.minimumRAM, "6GB")
-        XCTAssertEqual(base.toModelType, .balanced)
+        XCTAssertEqual(base.toString, .balanced)
 
         // Test Small model
         let small = WhisperModel.small
@@ -234,7 +234,7 @@ final class TranscriberTests: XCTestCase {
         XCTAssertEqual(small.targetLatency, "<5s")
         XCTAssertFalse(small.isEmbedded)
         XCTAssertEqual(small.minimumRAM, "8GB")
-        XCTAssertEqual(small.toModelType, .accurate)
+        XCTAssertEqual(small.toString, .accurate)
     }
 
     // MARK: - Audio Utilities Tests

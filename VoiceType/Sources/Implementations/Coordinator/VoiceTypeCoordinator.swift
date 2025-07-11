@@ -20,11 +20,9 @@ public class VoiceTypeCoordinator: ObservableObject {
     /// Current state of the recording/transcription process
     @Published public private(set) var recordingState: RecordingState = .idle
 
-    /// Selected AI model for transcription
-    @Published public var selectedModel: ModelType = .fast
+    /// Selected dynamic model ID for transcription
+    @Published public var selectedModelId: String?
     
-    /// Selected dynamic model ID (if using dynamic models)
-    @Published public var selectedDynamicModelId: String?
 
     /// Last successful transcription result
     @Published public private(set) var lastTranscription: String = ""
@@ -178,20 +176,8 @@ public class VoiceTypeCoordinator: ObservableObject {
                 throw VoiceTypeError.invalidAudioData
             }
 
-            // Transcribe audio with error handling
-            let result: TranscriptionResult
-            do {
-                result = try await transcriber.transcribe(audioData, language: selectedLanguage)
-            } catch {
-                // Retry with fallback model if available
-                if selectedModel != .fast, await isModelAvailable(.fast) {
-                    errorMessage = "Falling back to fast model..."
-                    try await changeModel(.fast)
-                    result = try await transcriber.transcribe(audioData, language: selectedLanguage)
-                } else {
-                    throw error
-                }
-            }
+            // Transcribe audio
+            let result = try await transcriber.transcribe(audioData, language: selectedLanguage)
 
             // Validate transcription quality
             if result.confidence < 0.5 {
@@ -208,16 +194,16 @@ public class VoiceTypeCoordinator: ObservableObject {
         }
     }
 
-    /// Change the selected AI model
-    public func changeModel(_ model: ModelType) async {
+    /// Change the selected model
+    public func changeModel(_ modelId: String) async {
         // Don't change model during active operations
         guard case .idle = recordingState else {
             errorMessage = "Cannot change model while recording or processing"
             return
         }
 
-        selectedModel = model
-        UserDefaults.standard.set(model.rawValue, forKey: "selectedModel")
+        selectedModelId = modelId
+        UserDefaults.standard.set(modelId, forKey: "selectedModelId")
 
         // Load the new model
         await loadSelectedModel()
@@ -225,76 +211,14 @@ public class VoiceTypeCoordinator: ObservableObject {
 
     /// Load the currently selected model
     public func loadSelectedModel() async {
-        // Check if we should load a dynamic model instead
-        if let dynamicModelId = selectedDynamicModelId {
-            await loadDynamicModel(modelId: dynamicModelId)
+        guard let modelId = selectedModelId else {
+            // Try to load default model
+            selectedModelId = "openai_whisper-tiny"
+            await loadSelectedModel()
             return
         }
         
-        // Set loading state
-        isLoadingModel = true
-        modelLoadingProgress = 0.0
-        modelLoadingStatus = "Checking model availability..."
-
-        defer {
-            isLoadingModel = false
-            modelLoadingProgress = 0.0
-            modelLoadingStatus = nil
-        }
-
-        // Check if we're using WhisperKit
-        if let whisperKitTranscriber = transcriber as? WhisperKitTranscriber {
-            let modelManager = WhisperKitModelManager()
-
-            // Check if model needs to be downloaded
-            if !modelManager.isModelDownloaded(modelType: selectedModel) {
-                modelLoadingStatus = "Model needs to be downloaded"
-                errorMessage = "Model \(selectedModel.displayName) needs to be downloaded first. Please go to Settings > Models to download it."
-
-                // Try fallback to embedded model
-                if selectedModel != .fast && modelManager.isModelDownloaded(modelType: .fast) {
-                    selectedModel = .fast
-                    modelLoadingStatus = "Using fast model as fallback"
-                } else {
-                    isReady = false
-                    return
-                }
-            }
-        } else {
-            // For non-WhisperKit transcribers, check basic availability
-            if !(await isModelAvailable(selectedModel)) {
-                errorMessage = "Model \(selectedModel.displayName) is not available"
-
-                // Try fallback to embedded model
-                let isFastAvailable = await isModelAvailable(.fast)
-                if selectedModel != .fast && isFastAvailable {
-                    selectedModel = .fast
-                    errorMessage = "Using fast model as fallback"
-                } else {
-                    isReady = false
-                    return
-                }
-            }
-        }
-
-        do {
-            modelLoadingStatus = "Loading \(selectedModel.displayName) model..."
-            modelLoadingProgress = 0.3
-
-            // Load the new model
-            try await transcriber.loadModel(selectedModel)
-
-            modelLoadingProgress = 1.0
-            modelLoadingStatus = "Model loaded successfully"
-
-            // Brief pause to show completion
-            try? await Task.sleep(nanoseconds: 500_000_000)
-
-            errorMessage = nil
-            updateReadyState()
-        } catch {
-            await handleError(error, duringOperation: .modelLoading)
-        }
+        await loadDynamicModel(modelId: modelId)
     }
     
     /// Load a dynamic WhisperKit model by ID
@@ -305,8 +229,8 @@ public class VoiceTypeCoordinator: ObservableObject {
             return
         }
         
-        selectedDynamicModelId = modelId
-        UserDefaults.standard.set(modelId, forKey: "selectedDynamicModelId")
+        selectedModelId = modelId
+        UserDefaults.standard.set(modelId, forKey: "selectedModelId")
         
         // Set loading state
         isLoadingModel = true
@@ -319,15 +243,8 @@ public class VoiceTypeCoordinator: ObservableObject {
             modelLoadingStatus = nil
         }
         
-        // Check if we're using WhisperKit
-        guard let whisperKitTranscriber = transcriber as? WhisperKitTranscriber else {
-            errorMessage = "Dynamic models are only supported with WhisperKit"
-            return
-        }
-        
-        let modelManager = WhisperKitModelManager()
-        
         // Check if model needs to be downloaded
+        let modelManager = WhisperKitModelManager()
         if !modelManager.isDynamicModelDownloaded(modelId: modelId) {
             modelLoadingStatus = "Model needs to be downloaded"
             errorMessage = "Model \(modelId) needs to be downloaded first. Please go to Settings > Models to download it."
@@ -339,8 +256,8 @@ public class VoiceTypeCoordinator: ObservableObject {
             modelLoadingStatus = "Loading \(modelId) model..."
             modelLoadingProgress = 0.3
             
-            // Load the dynamic model
-            try await whisperKitTranscriber.loadDynamicModel(modelId)
+            // Load the model using the transcriber
+            try await transcriber.loadModel(modelId)
             
             modelLoadingProgress = 1.0
             modelLoadingStatus = "Model loaded successfully"
@@ -432,13 +349,12 @@ public class VoiceTypeCoordinator: ObservableObject {
     }
 
     private func initialize() async {
-        // Load saved dynamic model ID if available
-        if let savedDynamicModelId = UserDefaults.standard.string(forKey: "selectedDynamicModelId") {
-            selectedDynamicModelId = savedDynamicModelId
-        } else if let savedModel = UserDefaults.standard.string(forKey: "selectedModel"),
-                  let modelType = ModelType(rawValue: savedModel) {
-            // Fall back to legacy model type
-            selectedModel = modelType
+        // Load saved model ID
+        if let savedModelId = UserDefaults.standard.string(forKey: "selectedModelId") {
+            selectedModelId = savedModelId
+        } else {
+            // Default to fast model
+            selectedModelId = "openai_whisper-tiny"
         }
 
         // Load the selected model
@@ -451,17 +367,6 @@ public class VoiceTypeCoordinator: ObservableObject {
         updateReadyState()
     }
 
-    private func isModelAvailable(_ model: ModelType) async -> Bool {
-        // Check if model is embedded
-        if model.isEmbedded {
-            // For embedded models, check if they exist in the bundle
-            return Bundle.main.url(forResource: "whisper-\(model.rawValue)", withExtension: "mlpackage") != nil
-        }
-
-        // For downloaded models, check with ModelManager
-        let installedModels = modelManager.installedModels
-        return installedModels.contains { $0.type == model }
-    }
 
     private func checkPermissions() async -> Bool {
         permissionManager.checkMicrophonePermission()
@@ -644,8 +549,8 @@ public class VoiceTypeCoordinator: ObservableObject {
             await transitionToState(.error("Model loading failed"))
             errorMessage = voiceTypeError.localizedDescription
             // Try fallback model
-            if selectedModel != .fast && errorRecoveryAttempts < maxErrorRecoveryAttempts {
-                await changeModel(.fast)
+            if selectedModelId != "openai_whisper-tiny" && errorRecoveryAttempts < maxErrorRecoveryAttempts {
+                await changeModel("openai_whisper-tiny")
             }
 
         case .noFocusedApplication, .unsupportedApplication:
@@ -821,18 +726,15 @@ public class VoiceTypeCoordinator: ObservableObject {
 
     /// Update the ready state based on component status
     private func updateReadyState() {
-        if let dynamicModelId = selectedDynamicModelId {
-            // Check if dynamic model is ready
-            let modelManager = WhisperKitModelManager()
-            isReady = hasMicrophonePermission &&
-                      transcriber.isModelLoaded &&
-                      modelManager.isDynamicModelDownloaded(modelId: dynamicModelId)
-        } else {
-            // Check legacy model
-            isReady = hasMicrophonePermission &&
-                      transcriber.isModelLoaded &&
-                      (modelManager.installedModels.contains { $0.type == selectedModel } || selectedModel.isEmbedded)
+        guard let modelId = selectedModelId else {
+            isReady = false
+            return
         }
+        
+        let modelManager = WhisperKitModelManager()
+        isReady = hasMicrophonePermission &&
+                  transcriber.isModelLoaded &&
+                  modelManager.isDynamicModelDownloaded(modelId: modelId)
     }
 
     // MARK: - Public Properties
@@ -877,9 +779,13 @@ public class VoiceTypeCoordinator: ObservableObject {
 /// Simple settings manager for menu bar view
 @MainActor
 class SettingsManager: ObservableObject {
-    @Published var selectedModel: ModelType {
+    @Published var selectedModelId: String? {
         didSet {
-            UserDefaults.standard.set(selectedModel.rawValue, forKey: "selectedModel")
+            if let modelId = selectedModelId {
+                UserDefaults.standard.set(modelId, forKey: "selectedModelId")
+            } else {
+                UserDefaults.standard.removeObject(forKey: "selectedModelId")
+            }
         }
     }
 
@@ -907,8 +813,7 @@ class SettingsManager: ObservableObject {
 
     init() {
         // Load saved preferences
-        let modelString = UserDefaults.standard.string(forKey: "selectedModel") ?? ModelType.fast.rawValue
-        self.selectedModel = ModelType(rawValue: modelString) ?? .fast
+        self.selectedModelId = UserDefaults.standard.string(forKey: "selectedModelId") ?? "openai_whisper-tiny"
 
         self.globalHotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? "ctrl+shift+v"
         self.showMenuBarIcon = UserDefaults.standard.bool(forKey: "showMenuBarIcon")

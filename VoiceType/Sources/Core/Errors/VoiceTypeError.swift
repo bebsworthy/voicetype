@@ -25,16 +25,16 @@ public enum VoiceTypeError: LocalizedError {
     // MARK: - Model Errors
 
     /// The requested model file was not found.
-    case modelNotFound(ModelType)
+    case modelNotFound(String)
 
     /// Failed to load the ML model.
-    case modelLoadingFailed(ModelType, String)
+    case modelLoadingFailed(String, String)
 
     /// Model file is corrupted or invalid.
-    case modelCorrupted(ModelType)
+    case modelCorrupted(String)
 
     /// Insufficient memory to load the model.
-    case insufficientMemoryForModel(ModelType)
+    case insufficientMemoryForModel(String)
 
     /// Model version is incompatible.
     case incompatibleModelVersion(String)
@@ -79,13 +79,13 @@ public enum VoiceTypeError: LocalizedError {
     case networkUnavailable
 
     /// Model download failed.
-    case downloadFailed(ModelType, String)
+    case downloadFailed(String, String)
 
     /// Download was cancelled by user.
     case downloadCancelled
 
     /// Checksum validation failed.
-    case checksumMismatch(ModelType)
+    case checksumMismatch(String)
 
     // MARK: - Storage Errors
 
@@ -139,17 +139,17 @@ public enum VoiceTypeError: LocalizedError {
         case .microphoneAccessFailed(let reason):
             return "Failed to access microphone: \(reason)"
 
-        case .modelNotFound(let type):
-            return "Model '\(type.displayName)' was not found. Please download it from settings."
+        case .modelNotFound(let modelId):
+            return "Model '\(modelId)' was not found. Please download it from settings."
 
-        case .modelLoadingFailed(let type, let reason):
-            return "Failed to load '\(type.displayName)' model: \(reason)"
+        case .modelLoadingFailed(let modelId, let reason):
+            return "Failed to load '\(modelId)' model: \(reason)"
 
-        case .modelCorrupted(let type):
-            return "Model '\(type.displayName)' appears to be corrupted. Please re-download."
+        case .modelCorrupted(let modelId):
+            return "Model '\(modelId)' appears to be corrupted. Please re-download."
 
-        case .insufficientMemoryForModel(let type):
-            return "Insufficient memory to load '\(type.displayName)'. Try using a smaller model."
+        case .insufficientMemoryForModel(let modelId):
+            return "Insufficient memory to load '\(modelId)'. Try using a smaller model."
 
         case .incompatibleModelVersion(let version):
             return "Model version '\(version)' is not compatible with this app version."
@@ -187,14 +187,14 @@ public enum VoiceTypeError: LocalizedError {
         case .networkUnavailable:
             return "Network connection is not available. Please check your internet connection."
 
-        case .downloadFailed(let type, let reason):
-            return "Failed to download '\(type.displayName)' model: \(reason)"
+        case .downloadFailed(let modelId, let reason):
+            return "Failed to download '\(modelId)' model: \(reason)"
 
         case .downloadCancelled:
             return "Download was cancelled."
 
-        case .checksumMismatch(let type):
-            return "Downloaded '\(type.displayName)' model is corrupted. Please try again."
+        case .checksumMismatch(let modelId):
+            return "Downloaded '\(modelId)' model is corrupted. Please try again."
 
         case .insufficientDiskSpace(let required):
             return "Insufficient disk space. Need \(required / 1024 / 1024) MB free."

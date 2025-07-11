@@ -33,7 +33,7 @@ class WhisperKitPerformanceTests: XCTestCase {
         try await measureTranscriptionSpeed(for: .accurate, expectedRealTimeFactor: 2.0)
     }
 
-    private func measureTranscriptionSpeed(for modelType: ModelType, expectedRealTimeFactor: Double) async throws {
+    private func measureTranscriptionSpeed(for modelType, expectedRealTimeFactor: Double) async throws {
         // Skip in CI
         guard ProcessInfo.processInfo.environment["CI"] == nil else {
             throw XCTSkip("Skipping performance test in CI")
@@ -85,7 +85,7 @@ class WhisperKitPerformanceTests: XCTestCase {
             throw XCTSkip("Skipping performance test in CI")
         }
 
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             guard modelManager.isModelDownloaded(modelType: modelType) else {
                 print("Skipping \(modelType.displayName) - not downloaded")
                 continue
@@ -97,7 +97,7 @@ class WhisperKitPerformanceTests: XCTestCase {
             let coldLoadTime = CFAbsoluteTimeGetCurrent() - coldStartTime
 
             // Measure warm load (switching models)
-            let otherModel = ModelType.allCases.first { $0 != modelType } ?? .fast
+            let otherModel = String.allCases.first { $0 != modelType } ?? .fast
             try await transcriber.loadModel(otherModel)
 
             let warmStartTime = CFAbsoluteTimeGetCurrent()
@@ -125,7 +125,7 @@ class WhisperKitPerformanceTests: XCTestCase {
         let baseline = getMemoryUsage()
         print("Baseline memory: \(formatBytes(baseline))")
 
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             guard modelManager.isModelDownloaded(modelType: modelType) else {
                 continue
             }

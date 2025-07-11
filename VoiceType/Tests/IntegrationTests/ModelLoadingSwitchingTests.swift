@@ -214,7 +214,7 @@ final class ModelLoadingSwitchingTests: XCTestCase {
 
     func testSequentialModelLoading() async throws {
         // Given: Need to load models sequentially
-        let models: [ModelType] = [.fast, .balanced, .accurate]
+        let models: [String] = [.fast, .balanced, .accurate]
 
         // When: Load each model
         for model in models {
@@ -347,11 +347,11 @@ class MockFileManagerExtension {
 
 // Extended mock for model loading tests
 class ModelLoadingMockTranscriber: MockTranscriber {
-    var loadedModels: [ModelType] = []
+    var loadedModels: [String] = []
     var shouldFailModelLoading = false
     var simulateMemoryPressure = false
 
-    override func loadModel(_ type: ModelType) async throws {
+    override func loadModel(_ type) async throws {
         if shouldFailModelLoading {
             throw TranscriberError.modelLoadingFailed("Mock failure")
         }

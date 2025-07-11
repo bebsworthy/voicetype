@@ -6,7 +6,7 @@ public struct TranscriberFactory {
     /// Available transcriber types
     public enum TranscriberType {
         case whisperKit
-        case coreMLWhisper(model: WhisperModel, modelPath: String)
+        case coreMLWhisper(modelName: String, modelPath: String)
         case mock(behavior: MockTranscriber.MockBehavior)
     }
 
@@ -51,8 +51,8 @@ public struct TranscriberFactory {
         case .whisperKit:
             return WhisperKitTranscriber()
 
-        case .coreMLWhisper(let model, let modelPath):
-            return CoreMLWhisper(modelType: model, modelPath: modelPath)
+        case .coreMLWhisper(let modelName, let modelPath):
+            return CoreMLWhisper(modelName: modelName, modelPath: modelPath)
 
         case .mock(let behavior):
             return MockTranscriber(behavior: behavior)
@@ -67,29 +67,29 @@ public struct TranscriberFactory {
 
     /// Create a CoreML Whisper transcriber with automatic model path resolution
     /// - Parameters:
-    ///   - model: The Whisper model size to use
+    ///   - modelName: The model name to use
     ///   - modelDirectory: Directory containing the model files (optional)
     /// - Returns: A configured CoreMLWhisper instance
     public static func createCoreMLWhisper(
-        model: WhisperModel,
+        modelName: String,
         modelDirectory: String? = nil
     ) -> CoreMLWhisper {
         let modelPath: String
 
         if let directory = modelDirectory {
-            modelPath = "\(directory)/\(model.fileName).mlmodelc"
+            modelPath = "\(directory)/\(modelName).mlmodelc"
         } else {
             // Default to bundle resources
-            if let bundlePath = Bundle.main.path(forResource: model.fileName, ofType: "mlmodelc") {
+            if let bundlePath = Bundle.main.path(forResource: modelName, ofType: "mlmodelc") {
                 modelPath = bundlePath
             } else {
                 // Fallback to Documents directory
                 let documentsPath = NSSearchPathForDirectoriesInDomains(.documentDirectory, .userDomainMask, true).first!
-                modelPath = "\(documentsPath)/Models/\(model.fileName).mlmodelc"
+                modelPath = "\(documentsPath)/Models/\(modelName).mlmodelc"
             }
         }
 
-        return CoreMLWhisper(modelType: model, modelPath: modelPath)
+        return CoreMLWhisper(modelName: modelName, modelPath: modelPath)
     }
 
     /// Create a mock transcriber for testing
@@ -111,7 +111,7 @@ public struct TranscriberFactory {
         // In debug builds, check configuration
         if !configuration.useWhisperKit {
             // Fallback to CoreML implementation
-            return createCoreMLWhisper(model: .tiny)
+            return createCoreMLWhisper(modelName: "whisper-tiny")
         }
         #endif
 
@@ -120,7 +120,7 @@ public struct TranscriberFactory {
             return createWhisperKit()
         } else {
             // Fallback to CoreML implementation
-            return createCoreMLWhisper(model: .tiny)
+            return createCoreMLWhisper(modelName: "whisper-tiny")
         }
     }
 }

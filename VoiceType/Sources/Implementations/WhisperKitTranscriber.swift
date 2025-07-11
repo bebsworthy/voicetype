@@ -74,16 +74,16 @@ public class WhisperKitTranscriber: Transcriber {
     // MARK: - Properties
 
     private var whisperKit: WhisperKit?
-    private var currentModelType: ModelType?
-    private var currentDynamicModelId: String?
+    private var currentModelId: String?
     private let queue = DispatchQueue(label: "com.voicetype.whisperkit.transcriber")
 
     // MARK: - Transcriber Protocol Properties
 
     public var modelInfo: ModelInfo {
-        guard let modelType = currentModelType else {
+        guard let modelId = currentModelId else {
             return ModelInfo(
-                type: .fast,
+                id: "unknown",
+                name: "No Model",
                 version: "0.0",
                 path: URL(fileURLWithPath: "/"),
                 sizeInBytes: 0,
@@ -93,10 +93,11 @@ public class WhisperKitTranscriber: Transcriber {
         }
 
         return ModelInfo(
-            type: modelType,
+            id: modelId,
+            name: modelId,
             version: "1.0",
-            path: URL(fileURLWithPath: getModelPath(for: modelType)),
-            sizeInBytes: getModelSize(for: modelType),
+            path: URL(fileURLWithPath: getModelPath(for: modelId)),
+            sizeInBytes: getModelSize(for: modelId),
             isLoaded: whisperKit != nil,
             lastUsed: Date()
         )
@@ -111,35 +112,29 @@ public class WhisperKitTranscriber: Transcriber {
         whisperKit != nil
     }
 
-    // MARK: - Model Mapping
+    // MARK: - Model Helpers
 
-    /// Maps VoiceType ModelType to WhisperKit model names
-    private func getWhisperKitModelName(for type: ModelType) -> String {
-        switch type {
-        case .fast:
-            return "openai_whisper-tiny"
-        case .balanced:
-            return "openai_whisper-base"
-        case .accurate:
-            return "openai_whisper-small"
-        }
-    }
-
-    /// Returns the approximate model size in bytes
-    private func getModelSize(for type: ModelType) -> Int64 {
-        switch type {
-        case .fast:
+    /// Returns the approximate model size in bytes based on model ID
+    private func getModelSize(for modelId: String) -> Int64 {
+        switch modelId {
+        case "openai_whisper-tiny":
             return 39 * 1024 * 1024 // ~39MB
-        case .balanced:
+        case "openai_whisper-base":
             return 74 * 1024 * 1024 // ~74MB
-        case .accurate:
+        case "openai_whisper-small":
             return 244 * 1024 * 1024 // ~244MB
+        case "openai_whisper-medium":
+            return 769 * 1024 * 1024 // ~769MB
+        case "openai_whisper-large":
+            return 1550 * 1024 * 1024 // ~1550MB
+        default:
+            return 100 * 1024 * 1024 // Default estimate
         }
     }
 
     /// Returns the model path (this will be managed by WhisperKit)
-    private func getModelPath(for type: ModelType) -> String {
-        "~/Library/Application Support/WhisperKit/\(getWhisperKitModelName(for: type))"
+    private func getModelPath(for modelId: String) -> String {
+        "~/Library/Application Support/WhisperKit/\(modelId)"
     }
 
     // MARK: - Initialization
@@ -218,65 +213,8 @@ public class WhisperKitTranscriber: Transcriber {
         }
     }
 
-    public func loadModel(_ type: ModelType) async throws {
-        // Unload current model if any
-        if whisperKit != nil {
-            whisperKit = nil
-            currentModelType = nil
-        }
-
-        do {
-            // Initialize WhisperKit with the specified model
-            let modelName = getWhisperKitModelName(for: type)
-
-            // Get the model path from WhisperKitModelManager
-            let modelManager = await WhisperKitModelManager()
-            
-            // If model is already downloaded, use its path
-            let modelFolder: String?
-            if let modelPath = await modelManager.getModelPath(modelType: type) {
-                // Use the model path directly - it already points to the model directory
-                modelFolder = modelPath.path
-                print("📁 Using existing model at: \(modelFolder ?? "nil")")
-                
-                // List contents to verify
-                if let contents = try? FileManager.default.contentsOfDirectory(atPath: modelFolder ?? "") {
-                    print("📦 Model directory contents:")
-                    for file in contents {
-                        print("   - \(file)")
-                    }
-                }
-            } else {
-                // Let WhisperKit download it
-                modelFolder = nil
-                print("📥 Model not found locally, will download")
-            }
-            
-            // Create WhisperKit configuration
-            let computeOptions = ModelComputeOptions(
-                audioEncoderCompute: .cpuAndGPU,
-                textDecoderCompute: .cpuAndGPU
-            )
-            
-            let config = WhisperKitConfig(
-                model: modelName,
-                downloadBase: nil, // Let WhisperKit use its defaults
-                modelRepo: nil, // Let WhisperKit use its default repo
-                modelFolder: modelFolder,
-                computeOptions: computeOptions,
-                verbose: true,  // Enable verbose logging
-                logLevel: .debug,  // Enable debug logging
-                prewarm: true,
-                load: true,
-                download: modelFolder == nil // Only download if we don't have a local path
-            )
-
-            // Initialize WhisperKit
-            whisperKit = try await WhisperKit(config)
-            currentModelType = type
-        } catch {
-            throw TranscriberError.modelLoadingFailed("Failed to load WhisperKit model: \(error.localizedDescription)")
-        }
+    public func loadModel(_ modelId: String) async throws {
+        try await loadDynamicModel(modelId)
     }
     
     /// Load a dynamic WhisperKit model by ID
@@ -284,8 +222,7 @@ public class WhisperKitTranscriber: Transcriber {
         // Unload current model if any
         if whisperKit != nil {
             whisperKit = nil
-            currentModelType = nil
-            currentDynamicModelId = nil
+            currentModelId = nil
         }
 
         do {
@@ -333,7 +270,7 @@ public class WhisperKitTranscriber: Transcriber {
 
             // Initialize WhisperKit
             whisperKit = try await WhisperKit(config)
-            currentDynamicModelId = modelId
+            currentModelId = modelId
         } catch {
             throw TranscriberError.modelLoadingFailed("Failed to load WhisperKit model '\(modelId)': \(error.localizedDescription)")
         }

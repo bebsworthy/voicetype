@@ -13,15 +13,15 @@ final class BasicTests: XCTestCase {
         XCTAssertEqual(spanish.displayName, "Spanish")
     }
 
-    func testModelType() {
+    func testString() {
         // Test model types
-        let fast = ModelType.fast
+        let fast = "openai_whisper-tiny"
         XCTAssertEqual(fast.displayName, "Fast (openai_whisper-tiny)")
 
-        let balanced = ModelType.balanced
+        let balanced = "openai_whisper-base"
         XCTAssertEqual(balanced.displayName, "Balanced (openai_whisper-base)")
 
-        let accurate = ModelType.accurate
+        let accurate = "openai_whisper-small"
         XCTAssertEqual(accurate.displayName, "Accurate (openai_whisper-small)")
     }
 
@@ -60,14 +60,14 @@ final class BasicTests: XCTestCase {
         // Test Whisper model enum
         let tiny = WhisperModel.tiny
         XCTAssertEqual(tiny.rawValue, "tiny")
-        XCTAssertEqual(tiny.toModelType, .fast)
+        XCTAssertEqual(tiny.toString, .fast)
 
         let base = WhisperModel.base
         XCTAssertEqual(base.rawValue, "base")
-        XCTAssertEqual(base.toModelType, .balanced)
+        XCTAssertEqual(base.toString, .balanced)
 
         let small = WhisperModel.small
         XCTAssertEqual(small.rawValue, "small")
-        XCTAssertEqual(small.toModelType, .accurate)
+        XCTAssertEqual(small.toString, .accurate)
     }
 }

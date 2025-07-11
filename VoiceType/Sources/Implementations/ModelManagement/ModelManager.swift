@@ -82,18 +82,6 @@ public final class ModelManager: ObservableObject {
 
     // MARK: - Helper Methods
 
-    private func modelTypeFromString(_ type: String) -> ModelType {
-        switch type.lowercased() {
-        case "fast", "tiny":
-            return .fast
-        case "balanced", "base":
-            return .balanced
-        case "accurate", "small":
-            return .accurate
-        default:
-            return .fast
-        }
-    }
 
     // MARK: - Public Methods
 
@@ -106,7 +94,8 @@ public final class ModelManager: ObservableObject {
             let fileInfos = try fileManager.installedModels()
             installedModels = fileInfos.map { fileInfo in
                 ModelInfo(
-                    type: modelTypeFromString(fileInfo.name),
+                    id: fileInfo.name,
+                    name: fileInfo.name,
                     version: fileInfo.version,
                     path: fileInfo.path,
                     sizeInBytes: fileInfo.size,
@@ -260,7 +249,8 @@ public final class ModelManager: ObservableObject {
 
         // Save metadata
         let metadata = ModelInfo(
-            type: modelTypeFromString(configuration.name),
+            id: configuration.name,
+            name: configuration.name,
             version: configuration.version,
             path: destinationPath,
             sizeInBytes: configuration.estimatedSize,

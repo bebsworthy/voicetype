@@ -331,26 +331,22 @@ public class AppLifecycleManager: ObservableObject {
         logger.info("Found \(installedModels.count) installed models")
 
         // Check if we have at least one working model
-        let selectedModel = UserDefaults.standard.string(forKey: "selectedModel") ?? "fast"
+        let selectedModelId = UserDefaults.standard.string(forKey: "selectedModelId") ?? "openai_whisper-tiny"
         var hasWorkingModel = false
 
-        if selectedModel == "fast" && embeddedModelURL != nil {
-            hasWorkingModel = true
-        } else {
-            hasWorkingModel = installedModels.contains { $0.type.rawValue.lowercased().contains(selectedModel) }
-        }
+        // Check if selected model is available
+        hasWorkingModel = installedModels.contains { $0.id == selectedModelId }
 
         if !hasWorkingModel {
             // Try to fallback to any available model
-            if embeddedModelURL != nil {
-                UserDefaults.standard.set("fast", forKey: "selectedModel")
-                logger.info("Falling back to embedded fast model")
-            } else if !installedModels.isEmpty {
-                let firstModel = installedModels[0].type.rawValue.lowercased()
-                UserDefaults.standard.set(firstModel, forKey: "selectedModel")
+            if !installedModels.isEmpty {
+                let firstModel = installedModels[0].id
+                UserDefaults.standard.set(firstModel, forKey: "selectedModelId")
                 logger.info("Falling back to first available model: \(firstModel)")
             } else {
-                throw AppLifecycleError.noModelsAvailable
+                // Default to tiny model
+                UserDefaults.standard.set("openai_whisper-tiny", forKey: "selectedModelId")
+                logger.info("No models available, defaulting to whisper-tiny")
             }
         }
 

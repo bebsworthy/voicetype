@@ -124,7 +124,7 @@ public struct MenuBarView: View {
                         }
                     }
                 } else {
-                    Text(coordinator.selectedModel.displayName)
+                    Text(getActiveModelName())
                         .font(.system(size: 11, weight: .medium))
                 }
             }
@@ -208,6 +208,22 @@ public struct MenuBarView: View {
             return .green
         default:
             return .primary
+        }
+    }
+    
+    private func getActiveModelName() -> String {
+        // Check if we're using a dynamic model
+        if let dynamicModelId = coordinator.selectedModelId {
+            // Extract a display name from the model ID
+            // e.g., "openai_whisper-tiny" -> "whisper-tiny"
+            let displayName = dynamicModelId
+                .replacingOccurrences(of: "openai_", with: "")
+                .replacingOccurrences(of: "distil-whisper_", with: "")
+                .replacingOccurrences(of: "_", with: " ")
+            return displayName
+        } else {
+            // Default to tiny if no model selected
+            return "whisper-tiny"
         }
     }
 

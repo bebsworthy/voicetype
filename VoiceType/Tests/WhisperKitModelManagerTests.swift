@@ -21,7 +21,7 @@ class WhisperKitModelManagerTests: XCTestCase {
 
     func testModelDetection() {
         // Test checking if models are downloaded
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             let isDownloaded = modelManager.isModelDownloaded(modelType: modelType)
 
             // We can't assert specific values as it depends on environment
@@ -37,7 +37,7 @@ class WhisperKitModelManagerTests: XCTestCase {
 
     func testModelPathRetrieval() {
         // Test getting paths for downloaded models
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             if modelManager.isModelDownloaded(modelType: modelType) {
                 let path = modelManager.getModelPath(modelType: modelType)
                 XCTAssertNotNil(path, "Downloaded model should have a path")
@@ -56,7 +56,7 @@ class WhisperKitModelManagerTests: XCTestCase {
 
     func testModelSizeCalculation() {
         // Test size calculation for downloaded models
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             if modelManager.isModelDownloaded(modelType: modelType) {
                 let size = modelManager.getModelSize(modelType: modelType)
                 XCTAssertNotNil(size)
@@ -87,7 +87,7 @@ class WhisperKitModelManagerTests: XCTestCase {
         }
 
         // Test verification for downloaded models
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             if modelManager.isModelDownloaded(modelType: modelType) {
                 let isValid = await modelManager.verifyModel(modelType: modelType)
                 XCTAssertTrue(isValid, "Downloaded model should be valid")
@@ -119,7 +119,7 @@ class WhisperKitModelManagerTests: XCTestCase {
 
     func testModelConfiguration() {
         // Test creating model configurations
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             let config = modelManager.createModelConfiguration(for: modelType)
 
             XCTAssertNotNil(config.name)
@@ -210,7 +210,7 @@ extension WhisperKitModelManagerTests {
     }
 
     /// Helper to get WhisperKit model name
-    func getWhisperKitModelName(for modelType: ModelType) -> String {
+    func getWhisperKitModelName(for modelType) -> String {
         switch modelType {
         case .fast:
             return "openai_whisper-tiny"

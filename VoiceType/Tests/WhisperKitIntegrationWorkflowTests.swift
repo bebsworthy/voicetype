@@ -167,7 +167,7 @@ class WhisperKitIntegrationWorkflowTests: XCTestCase {
 
         // If no models are downloaded, this would be where we'd trigger download
         // In tests, we just verify the API works
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             let isDownloaded = modelManager.isModelDownloaded(modelType: modelType)
             let config = modelManager.createModelConfiguration(for: modelType)
 
@@ -243,7 +243,7 @@ class WhisperKitIntegrationWorkflowTests: XCTestCase {
         XCTAssertNotNil(modelManager.currentDownloadTask)
 
         // Methods needed by ModelSettingsView
-        for modelType in ModelType.allCases {
+        for modelType in String.allCases {
             _ = modelManager.isModelDownloaded(modelType: modelType)
             _ = modelManager.getModelPath(modelType: modelType)
             _ = modelManager.getModelSize(modelType: modelType)

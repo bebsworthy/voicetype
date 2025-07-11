@@ -20,11 +20,11 @@ public protocol Transcriber {
     /// - Throws: TranscriptionError if model is not loaded or transcription fails
     func transcribe(_ audio: AudioData, language: Language?) async throws -> TranscriptionResult
 
-    /// Loads a specific model type for transcription.
-    /// - Parameter type: The model type to load (fast, balanced, or accurate)
+    /// Loads a specific model for transcription.
+    /// - Parameter modelId: The model identifier to load (e.g., "openai_whisper-tiny", "openai_whisper-base")
     /// - Throws: ModelError if model file is not found or loading fails
     /// - Note: Loading a new model will unload any previously loaded model
-    func loadModel(_ type: ModelType) async throws
+    func loadModel(_ modelId: String) async throws
 }
 
 /// Errors that can occur during transcription
