@@ -111,7 +111,7 @@ public class VoiceTypeCoordinator: ObservableObject {
         )
         self.audioProcessor = audioProcessor ?? AVFoundationAudio(configuration: audioConfig)
         self.transcriber = transcriber ?? TranscriberFactory.createDefault()
-        self.textInjector = textInjector ?? AccessibilityInjector()
+        self.textInjector = textInjector ?? TextInjectorFactory.createDefaultInjectorManager()
         self.permissionManager = permissionManager ?? PermissionManager()
         self.hotkeyManager = hotkeyManager ?? HotkeyManager()
         self.modelManager = modelManager ?? ModelManager()
@@ -246,6 +246,7 @@ public class VoiceTypeCoordinator: ObservableObject {
 
             // Store transcription
             lastTranscription = result.text
+            print("[VoiceTypeCoordinator] Transcription completed: \"\(result.text.prefix(50))\(result.text.count > 50 ? "..." : "")\" (confidence: \(result.confidence))")
 
             // Inject text into focused application
             await injectTranscription(result.text)
@@ -716,16 +717,28 @@ public class VoiceTypeCoordinator: ObservableObject {
 
     /// Inject transcription with fallback strategies
     private func injectTranscription(_ text: String) async {
+        // Get current application info
+        let workspace = NSWorkspace.shared
+        let frontmostApp = workspace.frontmostApplication
+        let appName = frontmostApp?.localizedName ?? "Unknown"
+        let bundleId = frontmostApp?.bundleIdentifier ?? "nil"
+        
+        print("[VoiceTypeCoordinator] Starting text injection")
+        print("[VoiceTypeCoordinator] Target application: \(appName) (\(bundleId))")
+        print("[VoiceTypeCoordinator] Text to inject: \"\(text.prefix(50))\(text.count > 50 ? "..." : "")\" (length: \(text.count))")
+        
         await withCheckedContinuation { continuation in
             textInjector.inject(text: text) { [weak self] result in
                 Task { @MainActor in
                     guard let self = self else {
+                        print("[VoiceTypeCoordinator] ERROR: Self deallocated during injection")
                         continuation.resume()
                         return
                     }
 
                     switch result {
                     case .success:
+                        print("[VoiceTypeCoordinator] Text injection successful")
                         await self.transitionToState(.success)
                         self.errorMessage = nil
 
@@ -738,12 +751,17 @@ public class VoiceTypeCoordinator: ObservableObject {
                         }
 
                     case .failure(let error):
+                        print("[VoiceTypeCoordinator] Text injection failed: \(error)")
+                        print("[VoiceTypeCoordinator] Falling back to clipboard")
+                        
                         // If injection fails, fallback to clipboard
                         await self.copyToClipboard(text)
 
                         if case .noFocusedElement = error {
+                            print("[VoiceTypeCoordinator] No focused element detected")
                             self.errorMessage = "Text copied to clipboard. Press ⌘V to paste."
                         } else {
+                            print("[VoiceTypeCoordinator] General injection failure")
                             self.errorMessage = "Text injection failed. Text copied to clipboard instead."
                         }
 

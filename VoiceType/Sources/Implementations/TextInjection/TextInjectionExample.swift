@@ -18,11 +18,12 @@ public class TextInjectionExample {
         let textToInject = "Hello from VoiceType!"
 
         injectorManager.inject(text: textToInject) { result in
-            if result.success {
-                print("✅ Text injected successfully using \(result.method)")
-                // Note: fallback information is indicated by the method type
-            } else {
-                print("❌ Text injection failed: \(result.error?.localizedDescription ?? "Unknown error")")
+            switch result {
+            case .success:
+                print("✅ Text injected successfully")
+                // Note: The specific method used is logged internally
+            case .failure(let error):
+                print("❌ Text injection failed: \(error.localizedDescription)")
             }
         }
     }
@@ -44,7 +45,12 @@ public class TextInjectionExample {
 
         // Use it to inject text
         injectorManager.inject(text: "Custom configured injection") { result in
-            print("Injection result: \(result.success ? "Success" : "Failed") via \(result.method)")
+            switch result {
+            case .success:
+                print("Injection result: Success")
+            case .failure(let error):
+                print("Injection result: Failed - \(error)")
+            }
         }
     }
 
@@ -65,7 +71,12 @@ public class TextInjectionExample {
         // Test multiple injections
         for i in 1...5 {
             manager.inject(text: "Test \(i)") { result in
-                print("Attempt \(i): \(result.success ? "✅" : "❌") via \(result.method)")
+                switch result {
+                case .success:
+                    print("Attempt \(i): ✅")
+                case .failure:
+                    print("Attempt \(i): ❌")
+                }
             }
         }
 
@@ -105,33 +116,35 @@ public class TextInjectionExample {
 
         // Inject into a potentially problematic context
         injectorManager.inject(text: "Error test") { result in
-            switch result.error {
-            case .incompatibleApplication(let appName):
-                print("App '\(appName)' doesn't support this injection method")
-                // Could show user a helpful message
+            switch result {
+            case .success:
+                print("Injection succeeded")
+            case .failure(let error):
+                switch error {
+                case .incompatibleApplication(let appName):
+                    print("App '\(appName)' doesn't support this injection method")
+                    // Could show user a helpful message
 
-            case .noFocusedElement:
-                print("No text field is selected. Please click in a text field.")
-                // Could show an overlay hint
+                case .noFocusedElement:
+                    print("No text field is selected. Please click in a text field.")
+                    // Could show an overlay hint
 
-            case .accessibilityNotEnabled:
-                print("Please enable accessibility permissions in System Preferences")
-                // Could open System Preferences
+                case .accessibilityNotEnabled:
+                    print("Please enable accessibility permissions in System Preferences")
+                    // Could open System Preferences
 
-            case .clipboardError(let error):
-                print("Clipboard error: \(error)")
-                // Could retry with different method
+                case .clipboardError(let error):
+                    print("Clipboard error: \(error)")
+                    // Could retry with different method
 
-            case .injectionFailed(let reason):
-                print("Injection failed: \(reason)")
-                // Log for debugging
+                case .injectionFailed(let reason):
+                    print("Injection failed: \(reason)")
+                    // Log for debugging
 
-            case .timeout:
-                print("Injection timed out")
-                // Could increase timeout or retry
-
-            case nil:
-                print("Success!")
+                case .timeout:
+                    print("Injection timed out")
+                    // Could increase timeout or retry
+                }
             }
         }
     }

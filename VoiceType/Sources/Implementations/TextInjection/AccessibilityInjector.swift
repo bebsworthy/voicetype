@@ -18,75 +18,119 @@ public class AccessibilityInjector: TextInjector {
     public init() {}
 
     public func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void) {
+        print("[AccessibilityInjector] Starting accessibility injection")
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
+                print("[AccessibilityInjector] ERROR: Injector deallocated")
                 completion(.failure(.injectionFailed(reason: "Injector deallocated")))
                 return
             }
 
             do {
                 try self.performInjection(text: text)
+                print("[AccessibilityInjector] Injection successful")
                 completion(.success(()))
             } catch let error as TextInjectionError {
+                print("[AccessibilityInjector] Injection failed with error: \(error)")
                 completion(.failure(error))
             } catch {
+                print("[AccessibilityInjector] Injection failed with unexpected error: \(error)")
                 completion(.failure(.injectionFailed(reason: error.localizedDescription)))
             }
         }
     }
 
     public func isCompatibleWithCurrentContext() -> Bool {
+        print("[AccessibilityInjector] Checking compatibility...")
+        
         // Check accessibility permissions
         guard AXIsProcessTrusted() else {
+            print("[AccessibilityInjector] Not compatible: Accessibility permissions not granted")
             return false
         }
 
         // Check if current app is in incompatible list
         if let frontmostApp = NSWorkspace.shared.frontmostApplication,
-           let bundleId = frontmostApp.bundleIdentifier,
-           incompatibleApps.contains(bundleId) {
-            return false
+           let bundleId = frontmostApp.bundleIdentifier {
+            print("[AccessibilityInjector] Current app: \(frontmostApp.localizedName ?? "Unknown") (\(bundleId))")
+            
+            if incompatibleApps.contains(bundleId) {
+                print("[AccessibilityInjector] Not compatible: App is in incompatible list")
+                return false
+            }
+            
+            // Chrome has known issues with accessibility APIs for web content
+            if bundleId == "com.google.Chrome" {
+                print("[AccessibilityInjector] Not compatible: Chrome doesn't support accessibility APIs for web content")
+                return false
+            }
         }
 
         // Check if we can access the focused element
         guard let systemWideElement = AXUIElementCreateSystemWide() as AXUIElement?,
               let focusedElement = getFocusedElement(from: systemWideElement) else {
+            print("[AccessibilityInjector] Not compatible: Cannot access focused element")
             return false
         }
 
         // Check if the focused element supports text input
-        return isTextInputElement(focusedElement)
+        let isTextInput = isTextInputElement(focusedElement)
+        print("[AccessibilityInjector] Focused element is text input: \(isTextInput)")
+        
+        return isTextInput
     }
 
     private func performInjection(text: String) throws {
+        print("[AccessibilityInjector] Performing injection...")
+        
         // Validate input
         guard !text.isEmpty else {
+            print("[AccessibilityInjector] ERROR: Cannot inject empty text")
             throw TextInjectionError.injectionFailed(reason: "Cannot inject empty text")
         }
         
         guard AXIsProcessTrusted() else {
+            print("[AccessibilityInjector] ERROR: Accessibility not enabled")
             throw TextInjectionError.accessibilityNotEnabled
         }
 
         guard let systemWideElement = AXUIElementCreateSystemWide() as AXUIElement? else {
+            print("[AccessibilityInjector] ERROR: Failed to create system-wide element")
             throw TextInjectionError.injectionFailed(reason: "Failed to create system-wide element")
         }
 
         guard let focusedElement = getFocusedElement(from: systemWideElement) else {
+            print("[AccessibilityInjector] ERROR: No focused element found")
             throw TextInjectionError.noFocusedElement
         }
 
         guard isTextInputElement(focusedElement) else {
+            print("[AccessibilityInjector] ERROR: Focused element is not a text input")
             throw TextInjectionError.noFocusedElement
         }
 
         // Try different methods to insert text
+        print("[AccessibilityInjector] Trying direct value set...")
         if let error = tryDirectValueSet(element: focusedElement, text: text) {
+            print("[AccessibilityInjector] Direct value set failed: \(error)")
+            print("[AccessibilityInjector] Trying selected text replacement...")
+            
             if let error = trySelectedTextReplacement(element: focusedElement, text: text) {
+                print("[AccessibilityInjector] Selected text replacement failed: \(error)")
+                print("[AccessibilityInjector] Trying keystroke simulation...")
+                
                 if let error = tryKeystrokeSimulation(text: text) {
+                    print("[AccessibilityInjector] Keystroke simulation failed: \(error)")
                     throw TextInjectionError.injectionFailed(reason: "All injection methods failed: \(error)")
+                } else {
+                    print("[AccessibilityInjector] Keystroke simulation succeeded")
                 }
+            } else {
+                print("[AccessibilityInjector] Selected text replacement succeeded")
             }
+        } else {
+            print("[AccessibilityInjector] Direct value set succeeded")
         }
     }
 
@@ -95,9 +139,19 @@ public class AccessibilityInjector: TextInjector {
         let result = AXUIElementCopyAttributeValue(systemWideElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
 
         guard result == .success, let element = focusedElement else {
+            print("[AccessibilityInjector] Failed to get focused element. Result: \(result.rawValue)")
+            
+            // Try alternative approach for Chrome
+            if let frontmostApp = NSWorkspace.shared.frontmostApplication,
+               frontmostApp.bundleIdentifier == "com.google.Chrome" {
+                print("[AccessibilityInjector] Chrome detected, trying alternative focus detection...")
+                return tryChromeFocusDetection()
+            }
+            
             return nil
         }
 
+        print("[AccessibilityInjector] Got focused element successfully")
         return (element as! AXUIElement)
     }
 
@@ -106,9 +160,12 @@ public class AccessibilityInjector: TextInjector {
         let roleResult = AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
 
         guard roleResult == .success, let roleString = role as? String else {
+            print("[AccessibilityInjector] Could not get element role")
             return false
         }
 
+        print("[AccessibilityInjector] Element role: \(roleString)")
+        
         let textInputRoles = [
             kAXTextFieldRole as String,
             kAXTextAreaRole as String,
@@ -117,7 +174,12 @@ public class AccessibilityInjector: TextInjector {
             kAXStaticTextRole as String
         ]
 
-        return textInputRoles.contains(roleString)
+        let isTextInput = textInputRoles.contains(roleString)
+        if !isTextInput {
+            print("[AccessibilityInjector] Role '\(roleString)' is not in text input roles: \(textInputRoles)")
+        }
+        
+        return isTextInput
     }
 
     private func tryDirectValueSet(element: AXUIElement, text: String) -> String? {
@@ -229,6 +291,41 @@ public class AccessibilityInjector: TextInjector {
         ]
 
         return keyMap[character]
+    }
+    
+    private func tryChromeFocusDetection() -> AXUIElement? {
+        print("[AccessibilityInjector] Attempting Chrome-specific focus detection...")
+        
+        guard let chromeApp = NSWorkspace.shared.frontmostApplication,
+              let pid = chromeApp.processIdentifier as? pid_t else {
+            print("[AccessibilityInjector] Could not get Chrome process ID")
+            return nil
+        }
+        
+        let appElement = AXUIElementCreateApplication(pid)
+        
+        // Try to get the focused window
+        var focusedWindow: CFTypeRef?
+        let windowResult = AXUIElementCopyAttributeValue(appElement, kAXFocusedWindowAttribute as CFString, &focusedWindow)
+        
+        if windowResult == .success, let window = focusedWindow {
+            print("[AccessibilityInjector] Got Chrome focused window")
+            
+            // Try to get focused element from window
+            var focusedElement: CFTypeRef?
+            let elementResult = AXUIElementCopyAttributeValue(window as! AXUIElement, kAXFocusedUIElementAttribute as CFString, &focusedElement)
+            
+            if elementResult == .success, let element = focusedElement {
+                print("[AccessibilityInjector] Got focused element from Chrome window")
+                return (element as! AXUIElement)
+            } else {
+                print("[AccessibilityInjector] Could not get focused element from Chrome window. Result: \(elementResult.rawValue)")
+            }
+        } else {
+            print("[AccessibilityInjector] Could not get Chrome focused window. Result: \(windowResult.rawValue)")
+        }
+        
+        return nil
     }
 }
 

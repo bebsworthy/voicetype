@@ -22,48 +22,72 @@ public class AppSpecificInjector: TextInjector {
     }
 
     public func inject(text: String, completion: @escaping (Result<Void, TextInjectionError>) -> Void) {
+        print("[AppSpecificInjector] Starting app-specific injection")
+        
         DispatchQueue.main.async { [weak self] in
             guard let self = self else {
+                print("[AppSpecificInjector] ERROR: Injector deallocated")
                 completion(.failure(.injectionFailed(reason: "Injector deallocated")))
                 return
             }
 
             guard let context = self.getCurrentContext() else {
+                print("[AppSpecificInjector] No context available, falling back to clipboard method")
                 // Fall back to clipboard method
                 self.fallbackInjector.inject(text: text, completion: completion)
                 return
             }
 
-            if let bundleId = context.bundleIdentifier,
-               let strategy = self.strategies[bundleId],
-               let element = context.focusedElement,
-               strategy.canHandle(element: element) {
-                do {
-                    try strategy.inject(text: text, element: element)
-                    completion(.success(()))
-                } catch let error as TextInjectionError {
-                    completion(.failure(error))
-                } catch {
-                    completion(.failure(.injectionFailed(reason: error.localizedDescription)))
+            if let bundleId = context.bundleIdentifier {
+                let appName = context.appName ?? "Unknown"
+                print("[AppSpecificInjector] Current app: \(appName) (bundle ID: \(bundleId))")
+                
+                if let strategy = self.strategies[bundleId],
+                   let element = context.focusedElement,
+                   strategy.canHandle(element: element) {
+                    print("[AppSpecificInjector] Found strategy for \(appName), attempting injection...")
+                    
+                    do {
+                        try strategy.inject(text: text, element: element)
+                        print("[AppSpecificInjector] App-specific injection successful")
+                        completion(.success(()))
+                    } catch let error as TextInjectionError {
+                        print("[AppSpecificInjector] App-specific injection failed: \(error)")
+                        completion(.failure(error))
+                    } catch {
+                        print("[AppSpecificInjector] App-specific injection failed with unexpected error: \(error)")
+                        completion(.failure(.injectionFailed(reason: error.localizedDescription)))
+                    }
+                } else {
+                    print("[AppSpecificInjector] No strategy found for \(appName), using fallback")
+                    // Use fallback
+                    self.fallbackInjector.inject(text: text, completion: completion)
                 }
             } else {
-                // Use fallback
+                print("[AppSpecificInjector] No bundle ID available, using fallback")
                 self.fallbackInjector.inject(text: text, completion: completion)
             }
         }
     }
 
     public func isCompatibleWithCurrentContext() -> Bool {
+        print("[AppSpecificInjector] Checking compatibility...")
+        
         guard let context = getCurrentContext() else {
+            print("[AppSpecificInjector] No context, checking fallback compatibility")
             return fallbackInjector.isCompatibleWithCurrentContext()
         }
 
         if let bundleId = context.bundleIdentifier,
            let strategy = strategies[bundleId],
            let element = context.focusedElement {
-            return strategy.canHandle(element: element)
+            let appName = context.appName ?? "Unknown"
+            let canHandle = strategy.canHandle(element: element)
+            print("[AppSpecificInjector] Strategy for \(appName) can handle: \(canHandle)")
+            return canHandle
         }
 
+        print("[AppSpecificInjector] No specific strategy, checking fallback compatibility")
         return fallbackInjector.isCompatibleWithCurrentContext()
     }
 
@@ -80,7 +104,7 @@ public class AppSpecificInjector: TextInjector {
         registerStrategy(XcodeInjectionStrategy())
     }
 
-    private func getCurrentContext() -> (bundleIdentifier: String?, focusedElement: AXUIElement?)? {
+    private func getCurrentContext() -> (bundleIdentifier: String?, appName: String?, focusedElement: AXUIElement?)? {
         guard let frontmostApp = NSWorkspace.shared.frontmostApplication,
               AXIsProcessTrusted() else {
             return nil
@@ -94,7 +118,7 @@ public class AppSpecificInjector: TextInjector {
             return nil
         }
 
-        return (frontmostApp.bundleIdentifier, element as! AXUIElement)
+        return (frontmostApp.bundleIdentifier, frontmostApp.localizedName, element as! AXUIElement)
     }
 }
 
@@ -148,24 +172,45 @@ class ChromeInjectionStrategy: AppInjectionStrategy {
         AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &role)
 
         if let roleString = role as? String {
-            return roleString == kAXTextFieldRole as String ||
-                   roleString == kAXTextAreaRole as String ||
-                   roleString == "AXTextField"
+            print("[ChromeInjectionStrategy] Element role: \(roleString)")
+            
+            // Chrome uses various roles for text input
+            let acceptedRoles = [
+                kAXTextFieldRole as String,
+                kAXTextAreaRole as String,
+                "AXTextField",
+                "AXTextArea",
+                "AXWebArea",
+                "AXGroup",  // Chrome sometimes uses groups for input areas
+                "AXStaticText"  // For contenteditable elements
+            ]
+            
+            return acceptedRoles.contains(roleString)
         }
         return false
     }
 
     func inject(text: String, element: AXUIElement) throws {
+        print("[ChromeInjectionStrategy] Attempting Chrome-specific injection")
+        
         // Chrome sometimes needs special handling for content editable divs
         // Try setting selected text first
+        print("[ChromeInjectionStrategy] Trying selected text approach...")
         let selectedResult = AXUIElementSetAttributeValue(element, kAXSelectedTextAttribute as CFString, text as CFString)
 
         if selectedResult != .success {
+            print("[ChromeInjectionStrategy] Selected text failed (result: \(selectedResult.rawValue)), trying value approach...")
+            
             // Fall back to value setting
             let valueResult = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, text as CFString)
             if valueResult != .success {
+                print("[ChromeInjectionStrategy] Value approach also failed (result: \(valueResult.rawValue))")
                 throw TextInjectionError.injectionFailed(reason: "Chrome injection failed")
+            } else {
+                print("[ChromeInjectionStrategy] Value approach succeeded")
             }
+        } else {
+            print("[ChromeInjectionStrategy] Selected text approach succeeded")
         }
     }
 }
