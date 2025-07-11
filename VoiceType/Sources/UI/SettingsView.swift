@@ -146,13 +146,18 @@ struct GeneralSettingsView: View {
                 .padding(.vertical, 4)
             }
             
-            Section("Language") {
-                Picker("Default Language", selection: languageBinding) {
-                    Text("Auto-detect").tag(Language?.none)
-                    Divider()
-                    ForEach(Language.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(Language?.some(language))
+            Section("Translation") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Translation Language", selection: languageBinding) {
+                        Text("Keep Original Language").tag(Language?.none)
+                        Divider()
+                        ForEach(Language.allCases, id: \.self) { language in
+                            Text("Translate to \(language.displayName)").tag(Language?.some(language))
+                        }
                     }
+                    Text("Keep Original Language: Transcribe in whatever language you speak\nSelect a language: Translate all speech to that language")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                 }
             }
         }
