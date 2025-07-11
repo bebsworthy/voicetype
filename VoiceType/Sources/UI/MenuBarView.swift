@@ -7,6 +7,7 @@ import AppKit
 public struct MenuBarView: View {
     @ObservedObject var coordinator: VoiceTypeCoordinator
     @Environment(\.openWindow) var openWindow
+    @Environment(\.dismiss) var dismiss
 
     public init(coordinator: VoiceTypeCoordinator) {
         self.coordinator = coordinator
@@ -88,6 +89,7 @@ public struct MenuBarView: View {
                         await coordinator.stopDictation()
                     }
                 }
+                // Don't dismiss for dictation since it's a toggle action
             }) {
                 HStack {
                     Image(systemName: dictationButtonIcon)
@@ -137,6 +139,7 @@ public struct MenuBarView: View {
         VStack(alignment: .leading, spacing: 8) {
             Button(action: {
                 openWindow(id: "settings")
+                dismiss()
             }) {
                 HStack {
                     Image(systemName: "gear")

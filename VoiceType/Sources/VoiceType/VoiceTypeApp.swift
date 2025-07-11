@@ -48,6 +48,15 @@ struct VoiceTypeApp: App {
                 .environmentObject(coordinator)
                 .frame(minWidth: 600, minHeight: 500)
                 .frame(idealWidth: 600, idealHeight: 500)
+                .onAppear {
+                    // Ensure window is focused when it appears
+                    DispatchQueue.main.async {
+                        NSApp.activate(ignoringOtherApps: true)
+                        if let window = NSApp.keyWindow {
+                            window.makeKeyAndOrderFront(nil)
+                        }
+                    }
+                }
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)

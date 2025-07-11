@@ -66,7 +66,15 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func showSettings() {
+        // Temporarily change activation policy to ensure window gets focus
+        NSApp.setActivationPolicy(.regular)
+        
         WindowController.shared.openSettings()
+        
+        // Restore accessory policy after a delay
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            NSApp.setActivationPolicy(.accessory)
+        }
     }
 
     // MARK: - Background Tasks
