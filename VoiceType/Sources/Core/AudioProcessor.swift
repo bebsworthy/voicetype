@@ -31,6 +31,10 @@ public protocol AudioProcessor {
     /// - Returns: AudioData containing the recorded samples
     /// - Note: Safe to call even if recording has already stopped
     func stopRecording() async -> AudioData
+    
+    /// Clean up resources used by the audio processor.
+    /// Should be called when the processor is no longer needed.
+    func cleanup()
 }
 
 /// Protocol for audio preprocessing plugins that can modify audio before transcription.
