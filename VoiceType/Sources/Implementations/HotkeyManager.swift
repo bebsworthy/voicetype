@@ -168,6 +168,55 @@ public class HotkeyManager: ObservableObject {
         }
         registeredHotkeys.removeAll()
     }
+    
+    /// Registers a push-to-talk hotkey that responds to both press and release
+    /// - Parameters:
+    ///   - identifier: Unique identifier for the hotkey
+    ///   - keyCombo: Key combination string (e.g., "cmd+shift+v")
+    ///   - onPress: Closure to execute when hotkey is pressed down
+    ///   - onRelease: Closure to execute when hotkey is released
+    /// - Throws: HotkeyError if registration fails
+    @MainActor
+    public func registerPushToTalkHotkey(identifier: String, keyCombo: String, onPress: @escaping () -> Void, onRelease: @escaping () -> Void) throws {
+        // Parse the key combination first
+        guard let parsedHotkey = parseKeyCombo(keyCombo) else {
+            throw HotkeyError.invalidKeyCombo(keyCombo)
+        }
+        
+        // Check if it has modifiers
+        if parsedHotkey.modifiers.isEmpty {
+            throw HotkeyError.invalidKeyCombo(keyCombo)
+        }
+        
+        // Check for conflicts excluding this identifier (in case of update)
+        if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
+            throw HotkeyError.conflictingHotkey(identifier: conflict.identifier, keyCombo: keyCombo)
+        }
+        
+        // Create push-to-talk hotkey
+        let hotkey = PushToTalkHotkey(
+            identifier: identifier,
+            keyCode: parsedHotkey.keyCode,
+            modifiers: parsedHotkey.modifiers,
+            onPress: onPress,
+            onRelease: onRelease
+        )
+        
+        // Register
+        queue.sync {
+            hotkeys[identifier] = hotkey
+        }
+        
+        // Update published state
+        registeredHotkeys[identifier] = RegisteredHotkey(
+            identifier: identifier,
+            keyCombo: keyCombo,
+            keyCode: parsedHotkey.keyCode,
+            modifiers: parsedHotkey.modifiers
+        )
+        
+        lastError = nil
+    }
 
     /// Validates a key combination string
     /// - Parameter keyCombo: Key combination string to validate
@@ -213,8 +262,8 @@ public class HotkeyManager: ObservableObject {
             return
         }
 
-        // Create global event monitor
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+        // Create global event monitor for both keyDown and keyUp
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
             self?.handleKeyEvent(event)
         }
 
@@ -237,14 +286,22 @@ public class HotkeyManager: ObservableObject {
     private func handleKeyEvent(_ event: NSEvent) {
         let keyCode = Int(event.keyCode)
         let modifiers = event.modifierFlags
+        let eventType = event.type
 
         queue.sync {
             // Find matching hotkey
             for (_, hotkey) in hotkeys {
                 if hotkey.keyCode == keyCode && hotkey.matches(modifiers: modifiers) {
-                    // Execute action on main queue
+                    // Execute action on main queue based on event type
                     DispatchQueue.main.async {
-                        hotkey.action()
+                        switch eventType {
+                        case .keyDown:
+                            hotkey.handleKeyDown()
+                        case .keyUp:
+                            hotkey.handleKeyUp()
+                        default:
+                            break
+                        }
                     }
                     break
                 }
@@ -393,11 +450,18 @@ public struct RegisteredHotkey {
 }
 
 /// Internal hotkey representation
-private struct Hotkey {
+private class Hotkey {
     let identifier: String
     let keyCode: Int
     let modifiers: NSEvent.ModifierFlags
     let action: () -> Void
+
+    init(identifier: String, keyCode: Int, modifiers: NSEvent.ModifierFlags, action: @escaping () -> Void) {
+        self.identifier = identifier
+        self.keyCode = keyCode
+        self.modifiers = modifiers
+        self.action = action
+    }
 
     func matches(modifiers: NSEvent.ModifierFlags) -> Bool {
         // Check if all required modifiers are present
@@ -406,6 +470,41 @@ private struct Hotkey {
         let relevantHotkeyModifiers = self.modifiers.intersection(requiredModifiers)
 
         return relevantEventModifiers == relevantHotkeyModifiers
+    }
+    
+    func handleKeyDown() {
+        action()
+    }
+    
+    func handleKeyUp() {
+        // Default hotkey doesn't do anything on key up
+    }
+}
+
+/// Push-to-talk hotkey that responds to both press and release
+private class PushToTalkHotkey: Hotkey {
+    let onPress: () -> Void
+    let onRelease: () -> Void
+    private var isPressed = false
+    
+    init(identifier: String, keyCode: Int, modifiers: NSEvent.ModifierFlags, onPress: @escaping () -> Void, onRelease: @escaping () -> Void) {
+        self.onPress = onPress
+        self.onRelease = onRelease
+        super.init(identifier: identifier, keyCode: keyCode, modifiers: modifiers, action: onPress)
+    }
+    
+    override func handleKeyDown() {
+        if !isPressed {
+            isPressed = true
+            onPress()
+        }
+    }
+    
+    override func handleKeyUp() {
+        if isPressed {
+            isPressed = false
+            onRelease()
+        }
     }
 }
 

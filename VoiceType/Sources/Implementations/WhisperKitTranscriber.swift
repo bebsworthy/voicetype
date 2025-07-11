@@ -322,6 +322,13 @@ public class WhisperKitTranscriber: Transcriber {
             detectedLanguage = .english
         }
 
+        // Debug log the decoded text
+        print("✅ Voice decoding complete:")
+        print("   Text: \"\(wrapped.text)\"")
+        print("   Confidence: \(String(format: "%.1f%%", averageConfidence * 100))")
+        print("   Language: \(detectedLanguage.rawValue)")
+        print("   Segments: \(allSegments.count)")
+        
         return VoiceTypeCore.TranscriptionResult(
             text: wrapped.text,
             confidence: averageConfidence,

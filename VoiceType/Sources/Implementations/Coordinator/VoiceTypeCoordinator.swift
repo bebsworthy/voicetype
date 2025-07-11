@@ -387,14 +387,20 @@ public class VoiceTypeCoordinator: ObservableObject {
         let hotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? HotkeyManager.HotkeyPreset.toggleRecording.defaultKeyCombo
 
         do {
-            try hotkeyManager.registerHotkey(
+            try hotkeyManager.registerPushToTalkHotkey(
                 identifier: HotkeyManager.HotkeyPreset.toggleRecording.identifier,
-                keyCombo: hotkey
-            ) { [weak self] in
-                Task { @MainActor in
-                    await self?.handleHotkeyPress()
+                keyCombo: hotkey,
+                onPress: { [weak self] in
+                    Task { @MainActor in
+                        await self?.handleHotkeyPress()
+                    }
+                },
+                onRelease: { [weak self] in
+                    Task { @MainActor in
+                        await self?.handleHotkeyRelease()
+                    }
                 }
-            }
+            )
         } catch {
             errorMessage = "Failed to register hotkey: \(error.localizedDescription)"
 
@@ -407,22 +413,30 @@ public class VoiceTypeCoordinator: ObservableObject {
         }
     }
 
-    /// Handle hotkey press with proper state management
+    /// Handle hotkey press (push-to-talk start)
     private func handleHotkeyPress() async {
         switch recordingState {
-        case .idle:
+        case .idle, .success, .error:
+            // Start recording when key is pressed
             await startDictation()
         case .recording:
-            await stopDictation()
+            // Already recording, ignore
+            break
         case .processing:
             // Ignore during processing
             break
-        case .success:
-            // Allow starting new recording immediately after success
-            await startDictation()
-        case .error:
-            // Allow retry after error
-            await startDictation()
+        }
+    }
+    
+    /// Handle hotkey release (push-to-talk stop)
+    private func handleHotkeyRelease() async {
+        switch recordingState {
+        case .recording:
+            // Stop recording when key is released
+            await stopDictation()
+        case .idle, .success, .error, .processing:
+            // Not recording, ignore
+            break
         }
     }
 

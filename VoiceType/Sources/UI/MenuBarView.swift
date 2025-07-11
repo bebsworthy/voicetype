@@ -254,13 +254,13 @@ public struct MenuBarView: View {
     private var dictationButtonText: String {
         switch coordinator.recordingState {
         case .idle:
-            return "Start Dictation"
+            return "Start Dictation (Hold)"
         case .recording:
-            return "Stop Recording"
+            return "Recording... (Release to stop)"
         case .processing:
             return "Processing..."
         default:
-            return "Start Dictation"
+            return "Start Dictation (Hold)"
         }
     }
 

@@ -83,11 +83,15 @@ struct GeneralSettingsView: View {
             
             GroupBox(label: Label("Hotkey", systemImage: "keyboard")) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Text("Press a key combination to set the global hotkey for starting voice input.")
+                    Text("Press and hold a key combination for push-to-talk voice input.")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     
                     HotkeyField(hotkey: $settingsManager.globalHotkey)
+                    
+                    Text("Hold down the keys to record, release to stop")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
                     
                     Text("Default: ⌃⇧V (Control+Shift+V)")
                         .font(.caption)
