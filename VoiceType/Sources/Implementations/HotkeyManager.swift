@@ -227,7 +227,9 @@ public class HotkeyManager: ObservableObject {
         }
 
         // Check if it's a reasonable combination
-        if parsed.modifiers.isEmpty {
+        // Allow certain special keys to be used without modifiers
+        let specialKeysAllowedAlone = [63, 79] // Globe/Fn (63), Microphone/F18 (79)
+        if parsed.modifiers.isEmpty && !specialKeysAllowedAlone.contains(parsed.keyCode) {
             return ValidationResult(isValid: false, error: "Hotkeys must include at least one modifier key")
         }
 
@@ -262,8 +264,8 @@ public class HotkeyManager: ObservableObject {
             return
         }
 
-        // Create global event monitor for both keyDown and keyUp
-        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .keyUp]) { [weak self] event in
+        // Create global event monitor for keyDown, keyUp, and flagsChanged (for modifier keys alone)
+        eventMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown, .keyUp, .flagsChanged]) { [weak self] event in
             self?.handleKeyEvent(event)
         }
 
@@ -288,6 +290,12 @@ public class HotkeyManager: ObservableObject {
         let modifiers = event.modifierFlags
         let eventType = event.type
 
+        // Special handling for flagsChanged events (modifier keys pressed alone)
+        if eventType == .flagsChanged {
+            handleFlagsChangedEvent(event)
+            return
+        }
+
         queue.sync {
             // Find matching hotkey
             for (_, hotkey) in hotkeys {
@@ -308,6 +316,31 @@ public class HotkeyManager: ObservableObject {
             }
         }
     }
+    
+    private func handleFlagsChangedEvent(_ event: NSEvent) {
+        // Globe/Fn key has keyCode 63
+        if event.keyCode == 63 {
+            let isPressed = event.modifierFlags.contains(.function)
+            
+            queue.sync {
+                // Find hotkeys registered for Globe key alone
+                for (_, hotkey) in hotkeys {
+                    if hotkey.keyCode == 63 && hotkey.modifiers.isEmpty {
+                        // Execute action on main queue
+                        DispatchQueue.main.async {
+                            if isPressed {
+                                hotkey.handleKeyDown()
+                            } else {
+                                hotkey.handleKeyUp()
+                            }
+                        }
+                        break
+                    }
+                }
+            }
+        }
+        // Could add support for other modifier keys alone here (Option, Control, etc.)
+    }
 
     private func parseKeyCombo(_ combo: String) -> (keyCode: Int, modifiers: NSEvent.ModifierFlags)? {
         let trimmedCombo = combo.trimmingCharacters(in: .whitespaces)
@@ -323,26 +356,55 @@ public class HotkeyManager: ObservableObject {
 
         var modifiers: NSEvent.ModifierFlags = []
         var keyPart: String?
-        let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift", "fn", "function"])
-
-        for part in parts {
-            switch part {
-            case "cmd", "command":
-                modifiers.insert(.command)
-            case "ctrl", "control":
-                modifiers.insert(.control)
-            case "opt", "option", "alt":
-                modifiers.insert(.option)
-            case "shift":
-                modifiers.insert(.shift)
-            case "fn", "function":
-                modifiers.insert(.function)
-            default:
-                if keyPart == nil {
-                    keyPart = part
-                } else {
-                    // Multiple non-modifier parts - invalid
-                    return nil
+        let validModifiers = Set(["cmd", "command", "ctrl", "control", "opt", "option", "alt", "shift"])
+        
+        // Special case: if there's only one part and it's a special key, treat it as the key, not a modifier
+        if parts.count == 1 {
+            let singlePart = parts[0]
+            if ["globe", "fn", "microphone", "mic", "dictation"].contains(singlePart) {
+                keyPart = singlePart
+            } else {
+                // Otherwise, process normally
+                for part in parts {
+                    switch part {
+                    case "cmd", "command":
+                        modifiers.insert(.command)
+                    case "ctrl", "control":
+                        modifiers.insert(.control)
+                    case "opt", "option", "alt":
+                        modifiers.insert(.option)
+                    case "shift":
+                        modifiers.insert(.shift)
+                    default:
+                        if keyPart == nil {
+                            keyPart = part
+                        } else {
+                            return nil
+                        }
+                    }
+                }
+            }
+        } else {
+            // Multiple parts - process normally
+            for part in parts {
+                switch part {
+                case "cmd", "command":
+                    modifiers.insert(.command)
+                case "ctrl", "control":
+                    modifiers.insert(.control)
+                case "opt", "option", "alt":
+                    modifiers.insert(.option)
+                case "shift":
+                    modifiers.insert(.shift)
+                case "fn", "function":
+                    modifiers.insert(.function)
+                default:
+                    if keyPart == nil {
+                        keyPart = part
+                    } else {
+                        // Multiple non-modifier parts - invalid
+                        return nil
+                    }
                 }
             }
         }
@@ -385,6 +447,11 @@ public class HotkeyManager: ObservableObject {
             // Function keys
             "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
             "f7": 98, "f8": 100, "f9": 101, "f10": 109, "f11": 103, "f12": 111,
+            "f18": 79, // Some apps map microphone key to F18
+            
+            // Special keys
+            "globe": 63, "fn": 63, // Globe/Fn key
+            "microphone": 79, "mic": 79, "dictation": 79, // Microphone key (mapped to F18)
 
             // Punctuation
             ",": 43, ".": 47, "/": 44, ";": 41, "'": 39, "[": 33, "]": 30,

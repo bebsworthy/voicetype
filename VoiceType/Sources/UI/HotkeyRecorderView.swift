@@ -63,7 +63,22 @@ public struct HotkeyRecorderView: View {
     }
     
     private func formatHotkey(_ hotkey: String) -> String {
-        hotkey.uppercased().replacingOccurrences(of: "+", with: " + ")
+        // Special formatting for Globe key
+        if hotkey.lowercased() == "globe" {
+            return "🌐"
+        }
+        
+        // Format other keys with nice symbols
+        let formatted = hotkey
+            .replacingOccurrences(of: "cmd", with: "⌘", options: .caseInsensitive)
+            .replacingOccurrences(of: "ctrl", with: "⌃", options: .caseInsensitive)
+            .replacingOccurrences(of: "option", with: "⌥", options: .caseInsensitive)
+            .replacingOccurrences(of: "shift", with: "⇧", options: .caseInsensitive)
+            .replacingOccurrences(of: "microphone", with: "🎙", options: .caseInsensitive)
+            .replacingOccurrences(of: "mic", with: "🎙", options: .caseInsensitive)
+            .replacingOccurrences(of: "+", with: " + ")
+        
+        return formatted.uppercased()
     }
     
     private func startRecording() {
@@ -82,7 +97,7 @@ public struct HotkeyRecorderView: View {
                 errorMessage = nil
                 onHotkeyChanged?(recordedKeys)
             } else {
-                errorMessage = "Invalid key combination. Please use modifier keys (⌘, ⌥, ⌃, ⇧) with a regular key."
+                errorMessage = "Invalid key combination. Use modifier keys (⌘, ⌥, ⌃, ⇧) with a regular key, or use Globe/Microphone key alone."
             }
         }
         
@@ -92,6 +107,22 @@ public struct HotkeyRecorderView: View {
     private func handleKeyPress(event: NSEvent) {
         guard isRecording else { return }
         
+        // Handle flagsChanged events for Globe key
+        if event.type == .flagsChanged {
+            // Globe/Fn key
+            if event.keyCode == 63 {
+                recordedKeys = "globe"
+                
+                // Auto-save after a short delay
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+                    if self.isRecording {
+                        self.stopRecording(save: true)
+                    }
+                }
+                return
+            }
+        }
+        
         // Get modifier flags
         var modifiers: [String] = []
         let flags = event.modifierFlags
@@ -100,34 +131,46 @@ public struct HotkeyRecorderView: View {
         if flags.contains(.option) { modifiers.append("option") }
         if flags.contains(.control) { modifiers.append("ctrl") }
         if flags.contains(.shift) { modifiers.append("shift") }
+        if flags.contains(.function) && event.keyCode != 63 { modifiers.append("fn") } // Don't add fn for Globe key alone
         
         // Get the key
-        if let characters = event.charactersIgnoringModifiers {
-            let keyString = keyCodeToString(event.keyCode) ?? characters.lowercased()
-            
-            if !modifiers.isEmpty && !keyString.isEmpty {
-                // Build the hotkey string
-                var hotkeyParts = modifiers
-                hotkeyParts.append(keyString)
-                recordedKeys = hotkeyParts.joined(separator: "+")
+        if event.type == .keyDown {
+            if let characters = event.charactersIgnoringModifiers {
+                let keyString = keyCodeToString(event.keyCode) ?? characters.lowercased()
                 
-                // Auto-save after a short delay
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-                    if self.isRecording {
-                        self.stopRecording(save: true)
+                if (!modifiers.isEmpty && !keyString.isEmpty) || isSpecialKeyAllowedAlone(keyString) {
+                    // Build the hotkey string
+                    var hotkeyParts = modifiers
+                    hotkeyParts.append(keyString)
+                    recordedKeys = hotkeyParts.joined(separator: "+")
+                    
+                    // Auto-save after a short delay
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+                        if self.isRecording {
+                            self.stopRecording(save: true)
+                        }
                     }
                 }
             }
         }
     }
     
+    private func isSpecialKeyAllowedAlone(_ key: String) -> Bool {
+        ["globe", "fn", "microphone", "mic", "dictation", "f18"].contains(key)
+    }
+    
     private func validateHotkey(_ hotkey: String) -> Bool {
         let parts = hotkey.split(separator: "+").map { String($0) }
         
-        // Must have at least one modifier and one key
+        // Special keys allowed alone
+        if parts.count == 1 && isSpecialKeyAllowedAlone(String(parts[0])) {
+            return true
+        }
+        
+        // Otherwise, must have at least one modifier and one key
         guard parts.count >= 2 else { return false }
         
-        let modifiers = ["cmd", "ctrl", "option", "shift"]
+        let modifiers = ["cmd", "ctrl", "option", "shift", "fn"]
         let hasModifier = parts.dropLast().contains { modifiers.contains($0) }
         let hasKey = !parts.last!.isEmpty
         
@@ -167,6 +210,8 @@ public struct HotkeyRecorderView: View {
         case 53: return "escape"
         case 36: return "return"
         case 48: return "tab"
+        case 63: return "globe"  // Globe/Fn key
+        case 79: return "microphone"  // Microphone key (F18)
         case 123: return "left"
         case 124: return "right"
         case 125: return "down"
