@@ -18,16 +18,16 @@ class WindowController: ObservableObject {
     
     /// Request to open the settings window
     func openSettings() {
-        shouldOpenSettings = true
-        
-        // Activate the app and bring window to front
+        // Check if settings window is already open
         DispatchQueue.main.async {
             // First activate the app
             NSApplication.shared.activate(ignoringOtherApps: true)
             
-            // Find and activate the settings window
+            // Find existing settings window
+            var settingsWindowFound = false
             for window in NSApp.windows {
-                if window.title == "Settings" {
+                if window.title == "Settings" && window.isVisible {
+                    // Settings window already exists and is visible
                     window.makeKeyAndOrderFront(nil)
                     window.orderFrontRegardless()
                     window.level = .floating // Temporarily make it floating
@@ -36,8 +36,14 @@ class WindowController: ObservableObject {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         window.level = .normal
                     }
+                    settingsWindowFound = true
                     break
                 }
+            }
+            
+            // Only trigger opening a new window if none exists
+            if !settingsWindowFound {
+                self.shouldOpenSettings = true
             }
         }
     }

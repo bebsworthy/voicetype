@@ -60,7 +60,11 @@ struct VoiceTypeApp: App {
         }
         .windowResizability(.contentSize)
         .defaultPosition(.center)
+        .windowStyle(.hiddenTitleBar)  // Clean look
         .commands {
+            // Remove new window command to prevent multiple windows
+            CommandGroup(replacing: .newItem) { }
+            
             // Include standard commands
             CommandGroup(replacing: .appSettings) {
                 Button("Settings...") {
