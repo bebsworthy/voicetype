@@ -274,81 +274,78 @@ struct DynamicModelRowView: View {
     }
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack {
-                        Text(model.displayName)
-                            .font(.headline)
-                        
-                        if let language = model.language {
-                            Text(language.uppercased())
-                                .font(.caption)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.blue.opacity(0.2))
-                                .foregroundColor(.blue)
-                                .cornerRadius(4)
-                        }
-                        
-                        if let variant = model.variant {
-                            Text(variant)
-                                .font(.caption)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(Color.purple.opacity(0.2))
-                                .foregroundColor(.purple)
-                                .cornerRadius(4)
-                        }
+        HStack(alignment: .center, spacing: 12) {
+            // Radio button on the left (only show if downloaded)
+            if isDownloaded {
+                Button(action: {
+                    selectModel()
+                }) {
+                    Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                        .foregroundColor(isSelected ? .accentColor : .secondary)
+                        .font(.system(size: 16))
+                }
+                .buttonStyle(.plain)
+            }
+            
+            // Model info
+            VStack(alignment: .leading, spacing: 4) {
+                HStack {
+                    Text(model.displayName)
+                        .font(.headline)
+                    
+                    if let language = model.language {
+                        Text(language.uppercased())
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.blue.opacity(0.2))
+                            .foregroundColor(.blue)
+                            .cornerRadius(4)
                     }
                     
-                    Text(model.sizeDescription)
-                        .font(.caption)
-                        .foregroundColor(.secondary)
+                    if let variant = model.variant {
+                        Text(variant)
+                            .font(.caption)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.purple.opacity(0.2))
+                            .foregroundColor(.purple)
+                            .cornerRadius(4)
+                    }
                 }
                 
-                Spacer()
-                
-                if isDownloading || (modelManager.isDownloading && modelManager.currentDownloadTask == model.displayName) {
-                    VStack {
-                        ProgressView()
-                            .progressViewStyle(.circular)
-                            .scaleEffect(0.8)
-                        if modelManager.downloadProgress > 0 {
-                            Text("\(Int(modelManager.downloadProgress * 100))%")
-                                .font(.caption)
-                                .foregroundColor(.secondary)
-                        }
+                Text(model.sizeDescription)
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer()
+            
+            // Actions on the right
+            if isDownloading || (modelManager.isDownloading && modelManager.currentDownloadTask == model.displayName) {
+                VStack {
+                    ProgressView()
+                        .progressViewStyle(.circular)
+                        .scaleEffect(0.8)
+                    if modelManager.downloadProgress > 0 {
+                        Text("\(Int(modelManager.downloadProgress * 100))%")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
                     }
-                } else if isDownloaded {
-                    HStack(spacing: 12) {
-                        // Selection button
-                        Button(action: {
-                            selectModel()
-                        }) {
-                            HStack(spacing: 6) {
-                                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
-                                    .foregroundColor(isSelected ? .accentColor : .secondary)
-                                Text(isSelected ? "Active" : "Select")
-                                    .font(.caption)
-                            }
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button("Delete") {
-                            showDeleteConfirmation = true
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .disabled(isSelected)
-                    }
-                } else {
-                    Button("Download") {
-                        downloadModel()
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.regular)
                 }
+            } else if isDownloaded {
+                Button("Delete") {
+                    showDeleteConfirmation = true
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .disabled(isSelected)
+            } else {
+                Button("Download") {
+                    downloadModel()
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
             }
         }
         .padding(.vertical, 4)
