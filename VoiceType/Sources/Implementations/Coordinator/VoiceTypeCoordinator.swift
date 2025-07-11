@@ -388,7 +388,9 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             )
             errorMessage = nil
+            print("✅ Successfully registered hotkey: \(newHotkey)")
         } catch {
+            print("🔴 Failed to update hotkey to '\(newHotkey)': \(error)")
             errorMessage = "Failed to register hotkey: \(error.localizedDescription)"
             
             // If it's an accessibility permission issue, guide the user
@@ -514,6 +516,7 @@ public class VoiceTypeCoordinator: ObservableObject {
                 }
             )
         } catch {
+            print("🔴 Failed to register hotkey '\(hotkey)': \(error)")
             errorMessage = "Failed to register hotkey: \(error.localizedDescription)"
 
             // If it's an accessibility permission issue, guide the user

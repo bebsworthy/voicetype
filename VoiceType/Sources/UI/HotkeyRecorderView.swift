@@ -97,7 +97,7 @@ public struct HotkeyRecorderView: View {
                 errorMessage = nil
                 onHotkeyChanged?(recordedKeys)
             } else {
-                errorMessage = "Invalid key combination. Use modifier keys (⌘, ⌥, ⌃, ⇧) with a regular key, or use Globe/Microphone key alone."
+                errorMessage = "Invalid key combination."
             }
         }
         
@@ -138,7 +138,7 @@ public struct HotkeyRecorderView: View {
             if let characters = event.charactersIgnoringModifiers {
                 let keyString = keyCodeToString(event.keyCode) ?? characters.lowercased()
                 
-                if (!modifiers.isEmpty && !keyString.isEmpty) || isSpecialKeyAllowedAlone(keyString) {
+                if !keyString.isEmpty {
                     // Build the hotkey string
                     var hotkeyParts = modifiers
                     hotkeyParts.append(keyString)
@@ -155,26 +155,9 @@ public struct HotkeyRecorderView: View {
         }
     }
     
-    private func isSpecialKeyAllowedAlone(_ key: String) -> Bool {
-        ["globe", "fn", "microphone", "mic", "dictation", "f18"].contains(key)
-    }
-    
     private func validateHotkey(_ hotkey: String) -> Bool {
-        let parts = hotkey.split(separator: "+").map { String($0) }
-        
-        // Special keys allowed alone
-        if parts.count == 1 && isSpecialKeyAllowedAlone(String(parts[0])) {
-            return true
-        }
-        
-        // Otherwise, must have at least one modifier and one key
-        guard parts.count >= 2 else { return false }
-        
-        let modifiers = ["cmd", "ctrl", "option", "shift", "fn"]
-        let hasModifier = parts.dropLast().contains { modifiers.contains($0) }
-        let hasKey = !parts.last!.isEmpty
-        
-        return hasModifier && hasKey
+        // Allow any non-empty key combination
+        !hotkey.isEmpty
     }
     
     private func keyCodeToString(_ keyCode: UInt16) -> String? {

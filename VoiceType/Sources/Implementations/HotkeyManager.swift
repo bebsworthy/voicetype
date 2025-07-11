@@ -72,10 +72,8 @@ public class HotkeyManager: ObservableObject {
             throw HotkeyError.invalidKeyCombo(keyCombo)
         }
 
-        // Check if it has modifiers
-        if parsedHotkey.modifiers.isEmpty {
-            throw HotkeyError.invalidKeyCombo(keyCombo)
-        }
+        // No restrictions - allow any key with or without modifiers
+        // Users should be able to use whatever key they prefer
 
         // Check for conflicts excluding this identifier (in case of update)
         if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
@@ -183,10 +181,8 @@ public class HotkeyManager: ObservableObject {
             throw HotkeyError.invalidKeyCombo(keyCombo)
         }
         
-        // Check if it has modifiers
-        if parsedHotkey.modifiers.isEmpty {
-            throw HotkeyError.invalidKeyCombo(keyCombo)
-        }
+        // No restrictions - allow any key with or without modifiers
+        // Users should be able to use whatever key they prefer
         
         // Check for conflicts excluding this identifier (in case of update)
         if let conflict = checkForConflict(parsedHotkey, excludingIdentifier: identifier) {
@@ -226,12 +222,8 @@ public class HotkeyManager: ObservableObject {
             return ValidationResult(isValid: false, error: "Invalid key combination format")
         }
 
-        // Check if it's a reasonable combination
-        // Allow certain special keys to be used without modifiers
-        let specialKeysAllowedAlone = [63, 79] // Globe/Fn (63), Microphone/F18 (79)
-        if parsed.modifiers.isEmpty && !specialKeysAllowedAlone.contains(parsed.keyCode) {
-            return ValidationResult(isValid: false, error: "Hotkeys must include at least one modifier key")
-        }
+        // No restrictions - allow any key with or without modifiers
+        // Users should be able to use whatever key they prefer
 
         if let conflict = checkForConflict(parsed, excludingIdentifier: nil) {
             return ValidationResult(isValid: false, error: "Conflicts with '\(conflict.identifier)'")
@@ -345,6 +337,8 @@ public class HotkeyManager: ObservableObject {
     private func parseKeyCombo(_ combo: String) -> (keyCode: Int, modifiers: NSEvent.ModifierFlags)? {
         let trimmedCombo = combo.trimmingCharacters(in: .whitespaces)
         guard !trimmedCombo.isEmpty else { return nil }
+        
+        print("🔍 Parsing key combo: '\(trimmedCombo)'")
 
         // Check for invalid formats
         if trimmedCombo.hasPrefix("+") || trimmedCombo.hasSuffix("+") || trimmedCombo.contains("++") {
@@ -418,10 +412,13 @@ public class HotkeyManager: ObservableObject {
         }
 
         guard let key = keyPart, let keyCode = keyCodeForString(key) else {
+            print("🔴 Failed to get keyCode for key: '\(keyPart ?? "nil")'")
             return nil
         }
 
-        return (keyCode, modifiers)
+        let result = (keyCode, modifiers)
+        print("✅ Parsed key combo: keyCode=\(keyCode), modifiers=\(modifiers), keyPart='\(key)'")
+        return result
     }
 
     private func keyCodeForString(_ key: String) -> Int? {
@@ -447,11 +444,16 @@ public class HotkeyManager: ObservableObject {
             // Function keys
             "f1": 122, "f2": 120, "f3": 99, "f4": 118, "f5": 96, "f6": 97,
             "f7": 98, "f8": 100, "f9": 101, "f10": 109, "f11": 103, "f12": 111,
-            "f18": 79, // Some apps map microphone key to F18
+            "f13": 105, "f14": 107, "f15": 113, "f16": 106, "f17": 64, "f18": 79, "f19": 80, "f20": 90,
             
             // Special keys
             "globe": 63, "fn": 63, // Globe/Fn key
             "microphone": 79, "mic": 79, "dictation": 79, // Microphone key (mapped to F18)
+            
+            // Media keys (these may vary by keyboard)
+            "volumeup": 72, "volumedown": 73, "mute": 74,
+            "play": 16, "pause": 16, "playpause": 16,
+            "next": 17, "previous": 18, "forward": 17, "rewind": 18,
 
             // Punctuation
             ",": 43, ".": 47, "/": 44, ";": 41, "'": 39, "[": 33, "]": 30,
