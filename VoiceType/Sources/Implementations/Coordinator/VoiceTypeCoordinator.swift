@@ -59,7 +59,7 @@ public class VoiceTypeCoordinator: ObservableObject {
 
     // MARK: - Dependencies
 
-    private let audioProcessor: AudioProcessor
+    private var audioProcessor: AudioProcessor
     private let transcriber: Transcriber
     private let textInjector: TextInjector
     private let permissionManager: PermissionManager
@@ -70,7 +70,7 @@ public class VoiceTypeCoordinator: ObservableObject {
 
     private var recordingTimer: Timer?
     private var recordingStartTime: Date?
-    private let maxRecordingDuration: TimeInterval = 5.0
+    private var settingsManager: SettingsManager?
     private var cancellables = Set<AnyCancellable>()
 
     // State management
@@ -84,6 +84,11 @@ public class VoiceTypeCoordinator: ObservableObject {
     // Component health monitoring
     private var componentHealthTimer: Timer?
     private var lastHealthCheck = Date()
+    
+    // Computed property for max recording duration
+    private var maxRecordingDuration: TimeInterval {
+        TimeInterval(settingsManager?.maxRecordingDuration ?? 30)
+    }
 
     // MARK: - Initialization
 
@@ -96,7 +101,15 @@ public class VoiceTypeCoordinator: ObservableObject {
         modelManager: ModelManager? = nil
     ) {
         // Use real implementations by default, allow injection for testing
-        self.audioProcessor = audioProcessor ?? AVFoundationAudio()
+        // Create audio processor with extended buffer for longer recordings
+        let audioConfig = AudioProcessorConfiguration(
+            sampleRate: 16000,
+            channelCount: 1,
+            bitDepth: 16,
+            bufferSize: 1024,
+            maxRecordingDuration: 60.0  // Support up to 60 seconds
+        )
+        self.audioProcessor = audioProcessor ?? AVFoundationAudio(configuration: audioConfig)
         self.transcriber = transcriber ?? TranscriberFactory.createDefault()
         self.textInjector = textInjector ?? AccessibilityInjector()
         self.permissionManager = permissionManager ?? PermissionManager()
@@ -110,6 +123,53 @@ public class VoiceTypeCoordinator: ObservableObject {
     }
 
     // MARK: - Public Methods
+    
+    /// Reinitialize the audio processor with updated configuration
+    public func reinitializeAudioProcessor() async {
+        // Don't reinitialize during active operations
+        guard recordingState == .idle else {
+            errorMessage = "Cannot change audio settings while recording or processing"
+            return
+        }
+        
+        // Get the updated max recording duration
+        let maxDuration = TimeInterval(settingsManager?.maxRecordingDuration ?? 30)
+        
+        // Create new audio processor with updated configuration
+        let audioConfig = AudioProcessorConfiguration(
+            sampleRate: 16000,
+            channelCount: 1,
+            bitDepth: 16,
+            bufferSize: 1024,
+            maxRecordingDuration: maxDuration
+        )
+        
+        // Clean up old audio processor
+        audioProcessor.cleanup()
+        
+        // Create new instance
+        audioProcessor = AVFoundationAudio(configuration: audioConfig)
+        
+        // Re-setup audio processor bindings
+        Task {
+            for await state in audioProcessor.recordingStateChanged {
+                await MainActor.run {
+                    handleAudioStateChange(state)
+                }
+            }
+        }
+        
+        Task {
+            for await level in audioProcessor.audioLevelChanged {
+                await MainActor.run {
+                    audioLevel = level
+                }
+            }
+        }
+        
+        // Update ready state
+        updateReadyState()
+    }
 
     /// Start voice dictation
     public func startDictation() async {
@@ -295,6 +355,55 @@ public class VoiceTypeCoordinator: ObservableObject {
         // Check accessibility (don't request, just check)
         _ = permissionManager.hasAccessibilityPermission()
     }
+    
+    /// Update the global hotkey
+    public func updateHotkey(_ newHotkey: String) async {
+        // Stop any active recording first
+        if recordingState == .recording {
+            await stopDictation()
+            // Wait a moment for cleanup
+            try? await Task.sleep(nanoseconds: 100_000_000) // 0.1 seconds
+        }
+        
+        // Save to UserDefaults
+        UserDefaults.standard.set(newHotkey, forKey: "globalHotkey")
+        
+        // Unregister old hotkey
+        hotkeyManager.unregisterHotkey(identifier: HotkeyManager.HotkeyPreset.toggleRecording.identifier)
+        
+        // Register new hotkey
+        do {
+            try hotkeyManager.registerPushToTalkHotkey(
+                identifier: HotkeyManager.HotkeyPreset.toggleRecording.identifier,
+                keyCombo: newHotkey,
+                onPress: { [weak self] in
+                    Task { @MainActor in
+                        await self?.handleHotkeyPress()
+                    }
+                },
+                onRelease: { [weak self] in
+                    Task { @MainActor in
+                        await self?.handleHotkeyRelease()
+                    }
+                }
+            )
+            errorMessage = nil
+        } catch {
+            errorMessage = "Failed to register hotkey: \(error.localizedDescription)"
+            
+            // If it's an accessibility permission issue, guide the user
+            if case HotkeyError.accessibilityPermissionRequired = error {
+                await MainActor.run {
+                    permissionManager.showAccessibilityPermissionGuide()
+                }
+            }
+            
+            // Try to re-register the old hotkey
+            let oldHotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? HotkeyManager.HotkeyPreset.toggleRecording.defaultKeyCombo
+            UserDefaults.standard.set(oldHotkey, forKey: "globalHotkey")
+            await setupHotkey()
+        }
+    }
 
     // MARK: - Private Methods
 
@@ -349,6 +458,9 @@ public class VoiceTypeCoordinator: ObservableObject {
     }
 
     private func initialize() async {
+        // Initialize settings manager
+        settingsManager = SettingsManager()
+        
         // Load saved model ID
         if let savedModelId = UserDefaults.standard.string(forKey: "selectedModelId") {
             selectedModelId = savedModelId
@@ -501,6 +613,7 @@ public class VoiceTypeCoordinator: ObservableObject {
              (.processing, .success),
              (.processing, .error),
              (.success, .idle),
+             (.success, .recording),  // Allow starting new recording from success
              (.error, .idle),
              (.error, .recording):
             return true
@@ -613,9 +726,9 @@ public class VoiceTypeCoordinator: ObservableObject {
                         await self.transitionToState(.success)
                         self.errorMessage = nil
 
-                        // Reset to idle after success
+                        // Reset to idle after brief success display
                         Task {
-                            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                             if self.recordingState == .success {
                                 await self.transitionToState(.idle)
                             }
@@ -635,7 +748,7 @@ public class VoiceTypeCoordinator: ObservableObject {
 
                         // Still count as success since user has the text
                         Task {
-                            try await Task.sleep(nanoseconds: 2_000_000_000) // 2 seconds
+                            try await Task.sleep(nanoseconds: 500_000_000) // 0.5 seconds
                             if self.recordingState == .success {
                                 await self.transitionToState(.idle)
                             }
@@ -792,8 +905,8 @@ public class VoiceTypeCoordinator: ObservableObject {
 
 /// Simple settings manager for menu bar view
 @MainActor
-class SettingsManager: ObservableObject {
-    @Published var selectedModelId: String? {
+public class SettingsManager: ObservableObject {
+    @Published public var selectedModelId: String? {
         didSet {
             if let modelId = selectedModelId {
                 UserDefaults.standard.set(modelId, forKey: "selectedModelId")
@@ -803,19 +916,13 @@ class SettingsManager: ObservableObject {
         }
     }
 
-    @Published var globalHotkey: String {
+    @Published public var globalHotkey: String {
         didSet {
             UserDefaults.standard.set(globalHotkey, forKey: "globalHotkey")
         }
     }
 
-    @Published var showMenuBarIcon: Bool {
-        didSet {
-            UserDefaults.standard.set(showMenuBarIcon, forKey: "showMenuBarIcon")
-        }
-    }
-
-    @Published var selectedLanguage: Language? {
+    @Published public var selectedLanguage: Language? {
         didSet {
             if let language = selectedLanguage {
                 UserDefaults.standard.set(language.rawValue, forKey: "selectedLanguage")
@@ -824,25 +931,27 @@ class SettingsManager: ObservableObject {
             }
         }
     }
+    
+    @Published public var maxRecordingDuration: Int {
+        didSet {
+            UserDefaults.standard.set(maxRecordingDuration, forKey: "maxRecordingDuration")
+        }
+    }
 
-    init() {
+    public init() {
         // Load saved preferences
         self.selectedModelId = UserDefaults.standard.string(forKey: "selectedModelId") ?? "openai_whisper-tiny"
 
         self.globalHotkey = UserDefaults.standard.string(forKey: "globalHotkey") ?? "ctrl+shift+v"
-        self.showMenuBarIcon = UserDefaults.standard.bool(forKey: "showMenuBarIcon")
+        
+        // Load max recording duration with default of 30 seconds
+        self.maxRecordingDuration = UserDefaults.standard.object(forKey: "maxRecordingDuration") as? Int ?? 30
 
         if let languageString = UserDefaults.standard.string(forKey: "selectedLanguage"),
            let language = Language(rawValue: languageString) {
             self.selectedLanguage = language
         } else {
             self.selectedLanguage = nil // Auto-detect
-        }
-
-        // Set default to true if not set
-        if UserDefaults.standard.object(forKey: "showMenuBarIcon") == nil {
-            UserDefaults.standard.set(true, forKey: "showMenuBarIcon")
-            self.showMenuBarIcon = true
         }
     }
 }

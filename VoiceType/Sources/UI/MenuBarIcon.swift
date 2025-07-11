@@ -39,7 +39,7 @@ public struct MenuBarIcon: View {
         case .idle:
             return isReady ? .primary : .orange
         case .recording:
-            return .red
+            return .green  // Changed from red to green
         case .processing:
             return .blue
         case .success:
@@ -91,7 +91,7 @@ public extension NSImage {
         // Only apply color for special states
         switch state {
         case .recording:
-            return baseImage.tinted(with: .systemRed)
+            return baseImage.tinted(with: .systemGreen)  // Changed from red to green
         case .processing:
             return baseImage.tinted(with: .systemBlue)
         case .success:
@@ -131,10 +131,39 @@ public struct MenuBarExtraIcon: View {
     }
 
     public var body: some View {
-        MenuBarIcon(
-            recordingState: coordinator.recordingState,
-            isReady: coordinator.isReady
-        )
+        Image(systemName: iconName)
+            .symbolRenderingMode(.multicolor)
+            .foregroundStyle(iconColor)
+    }
+    
+    private var iconName: String {
+        switch coordinator.recordingState {
+        case .idle:
+            return coordinator.isReady ? "mic" : "mic.slash"
+        case .recording:
+            return "mic.fill"
+        case .processing:
+            return "mic.badge.questionmark"
+        case .success:
+            return "mic.badge.checkmark"
+        case .error:
+            return "mic.badge.xmark"
+        }
+    }
+
+    private var iconColor: Color {
+        switch coordinator.recordingState {
+        case .idle:
+            return coordinator.isReady ? .primary : .orange
+        case .recording:
+            return .green
+        case .processing:
+            return .blue
+        case .success:
+            return .green
+        case .error:
+            return .red
+        }
     }
 }
 
@@ -189,8 +218,8 @@ public class MenuBarStatusItem: ObservableObject {
     public func updateIcon() {
         guard let button = statusItem?.button else { return }
 
-        // Update the icon based on state
-        button.image = NSImage.menuBarIcon(
+        // Update the icon based on state - use colored version
+        button.image = NSImage.coloredMenuBarIcon(
             for: coordinator.recordingState,
             isReady: coordinator.isReady
         )

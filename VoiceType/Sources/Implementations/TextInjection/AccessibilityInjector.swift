@@ -59,6 +59,11 @@ public class AccessibilityInjector: TextInjector {
     }
 
     private func performInjection(text: String) throws {
+        // Validate input
+        guard !text.isEmpty else {
+            throw TextInjectionError.injectionFailed(reason: "Cannot inject empty text")
+        }
+        
         guard AXIsProcessTrusted() else {
             throw TextInjectionError.accessibilityNotEnabled
         }
@@ -132,10 +137,22 @@ public class AccessibilityInjector: TextInjector {
             if AXValueGetValue(range as! AXValue, .cfRange, &cfRange) {
                 let nsRange = NSRange(location: cfRange.location, length: cfRange.length)
                 let mutableText = NSMutableString(string: currentText)
-                mutableText.replaceCharacters(in: nsRange, with: text)
-
-                let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, mutableText as CFString)
-                return result == .success ? nil : "Failed to set value"
+                
+                // Validate range bounds
+                let textLength = mutableText.length
+                if nsRange.location >= 0 && 
+                   nsRange.location <= textLength && 
+                   nsRange.location + nsRange.length <= textLength {
+                    mutableText.replaceCharacters(in: nsRange, with: text)
+                    
+                    let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, mutableText as CFString)
+                    return result == .success ? nil : "Failed to set value"
+                } else {
+                    // Range is out of bounds, append to end instead
+                    let newText = currentText + text
+                    let result = AXUIElementSetAttributeValue(element, kAXValueAttribute as CFString, newText as CFString)
+                    return result == .success ? nil : "Failed to set value (invalid range)"
+                }
             }
         } else {
             // Append to end

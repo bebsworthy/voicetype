@@ -64,7 +64,9 @@ public final class AVFoundationAudio: AudioProcessor {
         self.configuration = configuration
 
         // Calculate buffer size for max recording duration
-        let maxSamples = Int(configuration.sampleRate * configuration.maxRecordingDuration) * configuration.channelCount
+        // Use a larger buffer to accommodate actual max recording duration
+        let maxDuration = max(configuration.maxRecordingDuration, 60.0) // Support up to 60 seconds
+        let maxSamples = Int(configuration.sampleRate * maxDuration) * configuration.channelCount
         self.audioBuffer = CircularBuffer<Int16>(capacity: maxSamples)
 
         // Initialize async streams
@@ -165,6 +167,9 @@ public final class AVFoundationAudio: AudioProcessor {
                                             sampleRate: configuration.sampleRate,
                                             channels: AVAudioChannelCount(configuration.channelCount),
                                             interleaved: true)!
+            
+            // Remove any existing tap before installing a new one
+            inputNode.removeTap(onBus: 0)
             
             // Install tap on input node with its native format
             inputNode.installTap(onBus: 0, bufferSize: AVAudioFrameCount(configuration.bufferSize), format: inputFormat) { [weak self] buffer, when in
@@ -339,9 +344,11 @@ public final class AVFoundationAudio: AudioProcessor {
         audioLevelTimer?.invalidate()
         audioLevelTimer = nil
 
+        // Always remove tap first, regardless of engine state
+        audioEngine.inputNode.removeTap(onBus: 0)
+        
         // Stop audio engine
         if audioEngine.isRunning {
-            audioEngine.inputNode.removeTap(onBus: 0)
             audioEngine.stop()
         }
 

@@ -81,25 +81,77 @@ public struct SettingsView: View {
 
 struct GeneralSettingsView: View {
     @EnvironmentObject var coordinator: VoiceTypeCoordinator
-    @AppStorage("launchAtLogin") private var launchAtLogin = false
-    @AppStorage("showMenuBarIcon") private var showMenuBarIcon = true
+    @StateObject private var launchAtLoginManager = LaunchAtLoginManager.shared
+    @StateObject private var settingsManager = SettingsManager()
     @AppStorage("playFeedbackSounds") private var playFeedbackSounds = true
+    @AppStorage("globalHotkey") private var globalHotkey = "ctrl+shift+v"
+    @AppStorage("maxRecordingDuration") private var maxRecordingDuration = 30
+    
+    private var languageBinding: Binding<Language?> {
+        Binding(
+            get: { settingsManager.selectedLanguage },
+            set: { settingsManager.selectedLanguage = $0 }
+        )
+    }
     
     var body: some View {
         Form {
             Section("Startup") {
-                Toggle("Launch at login", isOn: $launchAtLogin)
-                Toggle("Show menu bar icon", isOn: $showMenuBarIcon)
+                Toggle("Launch at login", isOn: launchAtLoginManager.binding)
             }
             
             Section("Behavior") {
                 Toggle("Play feedback sounds", isOn: $playFeedbackSounds)
             }
             
+            Section("Recording") {
+                VStack(alignment: .leading, spacing: 12) {
+                    // Global Hotkey
+                    HStack {
+                        Text("Global Hotkey:")
+                        Spacer()
+                        HotkeyRecorderView(hotkey: $globalHotkey) { newHotkey in
+                            // Update the hotkey in the coordinator
+                            Task {
+                                await coordinator.updateHotkey(newHotkey)
+                            }
+                        }
+                    }
+                    Text("Hold down to record, release to stop")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                    
+                    Divider()
+                    
+                    // Maximum Recording Duration
+                    HStack {
+                        Text("Maximum Recording Duration:")
+                        Spacer()
+                        Picker("", selection: $maxRecordingDuration) {
+                            Text("5 seconds").tag(5)
+                            Text("10 seconds").tag(10)
+                            Text("30 seconds").tag(30)
+                            Text("60 seconds").tag(60)
+                        }
+                        .pickerStyle(.menu)
+                        .fixedSize()
+                        .onChange(of: maxRecordingDuration) { newValue in
+                            // Reinitialize audio processor with new buffer size
+                            Task {
+                                await coordinator.reinitializeAudioProcessor()
+                            }
+                        }
+                    }
+                }
+                .padding(.vertical, 4)
+            }
+            
             Section("Language") {
-                Picker("Default Language", selection: .constant(Language.english)) {
+                Picker("Default Language", selection: languageBinding) {
+                    Text("Auto-detect").tag(Language?.none)
+                    Divider()
                     ForEach(Language.allCases, id: \.self) { language in
-                        Text(language.displayName).tag(language)
+                        Text(language.displayName).tag(Language?.some(language))
                     }
                 }
             }

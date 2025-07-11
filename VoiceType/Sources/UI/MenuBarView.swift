@@ -175,7 +175,7 @@ public struct MenuBarView: View {
         case .idle:
             return coordinator.isReady ? .gray : .orange
         case .recording:
-            return .red
+            return .green  // Changed from red to green
         case .processing:
             return .blue
         case .success:
